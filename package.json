@@ -5,10 +5,16 @@
   "private": true,
   "dependencies": {
     "@openai/realtime-api-beta": "github:openai/openai-realtime-api-beta",
+    "@types/pdfjs-dist": "^2.10.377",
     "dotenv": "^16.4.5",
     "leaflet": "^1.9.4",
     "llamaindex": "^0.6.15",
-    "next": "14.2.14",
+    "next": "^14.2.24",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.1",
+    "pdf2pic": "^3.1.4",
+    "pdfjs-dist": "^3.11.174",
+    "pngjs": "^7.0.0",
     "react": "^18",
     "react-dom": "^18",
     "react-feather": "^2.0.10",
@@ -28,7 +34,9 @@
     "relay": "nodemon ./relay-server/index.js",
     "generate": "tsx src/pages/engine/generate.ts",
     "format": "prettier --ignore-unknown --cache --check .",
-    "format:write": "prettier --ignore-unknown --write ."
+    "format:write": "prettier --ignore-unknown --write .",
+    "setup": "tsx setup-pdf-workaround.ts",
+    "generate:safe": "npm run setup && npm run generate"
   },
   "eslintConfig": {
     "extends": [
@@ -55,6 +63,8 @@
     "@types/jest": "^27.5.2",
     "@types/leaflet": "^1.9.12",
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",

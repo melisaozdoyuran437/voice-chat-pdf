@@ -1,5 +1,5 @@
 import { VectorStoreIndex } from 'llamaindex';
-import { storageContextFromDefaults } from 'llamaindex/storage/StorageContext';
+import { storageContextFromDefaults } from 'llamaindex';
 
 import * as dotenv from 'dotenv';
 

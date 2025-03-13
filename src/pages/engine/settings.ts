@@ -13,10 +13,10 @@ import {
   OpenAIEmbedding,
   Settings,
 } from 'llamaindex';
-import { HuggingFaceEmbedding } from 'llamaindex/embeddings/HuggingFaceEmbedding';
-import { OllamaEmbedding } from 'llamaindex/embeddings/OllamaEmbedding';
-import { ALL_AVAILABLE_ANTHROPIC_MODELS } from 'llamaindex/llm/anthropic';
-import { Ollama } from 'llamaindex/llm/ollama';
+import { HuggingFaceEmbedding } from 'llamaindex';
+import { OllamaEmbedding } from 'llamaindex';
+import { ALL_AVAILABLE_ANTHROPIC_MODELS } from 'llamaindex';
+import { Ollama } from 'llamaindex';
 
 const CHUNK_SIZE = 512;
 const CHUNK_OVERLAP = 20;
