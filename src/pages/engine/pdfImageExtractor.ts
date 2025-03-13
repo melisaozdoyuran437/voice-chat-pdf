@@ -59,36 +59,35 @@ export async function extractEmbeddedImages(filePath: string): Promise<{ page: n
             const bitsPerComponent = (bitsObj as PDFNumber).asNumber();
             let colorSpace = csObj.toString(); // e.g. '/DeviceRGB' or '/DeviceGray' or '/ICCBased ...'
 
-            // ...
-let effectiveColorSpace = "";
-if (colorSpace.includes("ICCBased")) {
-  // Attempt to handle ICCBased color spaces that might be defined as an array.
-  let iccDict: any;
-  // If csObj is an array, get the second element; otherwise, lookup the object.
-  if (Array.isArray(csObj)) {
-    iccDict = pdfDoc.context.lookup(csObj[1]);
-  } else {
-    iccDict = pdfDoc.context.lookup(csObj);
-  }
-  const nObj = iccDict instanceof PDFDict ? iccDict.get(PDFName.of("N")) : undefined;
-  const n = nObj ? (nObj as PDFNumber).asNumber() : undefined;
-  console.log(`ICCBased color space: N = ${n}`);
-  if (n === 1) {
-    effectiveColorSpace = "DeviceGray";
-  } else if (n === 3) {
-    effectiveColorSpace = "DeviceRGB";
-  } else {
-    // Fallback: assume RGB if not defined.
-    effectiveColorSpace = "DeviceRGB";
-    console.warn(`Falling back to DeviceRGB for ICCBased color space on page ${i+1}, key ${key.toString()}`);
-  }
-} else if (colorSpace.includes("DeviceGray")) {
-  effectiveColorSpace = "DeviceGray";
-} else if (colorSpace.includes("DeviceRGB")) {
-  effectiveColorSpace = "DeviceRGB";
-} else {
-  effectiveColorSpace = "Unsupported";
-}
+            let effectiveColorSpace = "";
+            if (colorSpace.includes("ICCBased")) {
+            // Attempt to handle ICCBased color spaces that might be defined as an array.
+            let iccDict: any;
+            // If csObj is an array, get the second element; otherwise, lookup the object.
+            if (Array.isArray(csObj)) {
+                iccDict = pdfDoc.context.lookup(csObj[1]);
+            } else {
+                iccDict = pdfDoc.context.lookup(csObj);
+            }
+            const nObj = iccDict instanceof PDFDict ? iccDict.get(PDFName.of("N")) : undefined;
+            const n = nObj ? (nObj as PDFNumber).asNumber() : undefined;
+            console.log(`ICCBased color space: N = ${n}`);
+            if (n === 1) {
+                effectiveColorSpace = "DeviceGray";
+            } else if (n === 3) {
+                effectiveColorSpace = "DeviceRGB";
+            } else {
+                // Fallback: assume RGB if not defined.
+                effectiveColorSpace = "DeviceRGB";
+                console.warn(`Falling back to DeviceRGB for ICCBased color space on page ${i+1}, key ${key.toString()}`);
+            }
+            } else if (colorSpace.includes("DeviceGray")) {
+            effectiveColorSpace = "DeviceGray";
+            } else if (colorSpace.includes("DeviceRGB")) {
+            effectiveColorSpace = "DeviceRGB";
+            } else {
+            effectiveColorSpace = "Unsupported";
+            }
 
             if (effectiveColorSpace === "Unsupported") {
               console.warn(`Unsupported ColorSpace encountered on page ${i+1}, key ${key.toString()}: ${colorSpace}`);

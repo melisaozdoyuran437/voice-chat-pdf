@@ -50,7 +50,7 @@ export async function getDocuments() {
             source: filePath,
             private: 'false',
             pageNumber: page.pageNumber,
-            images: pageImages, // Only the images from this page
+            images: pageImages,
           },
         });
         pdfDocuments.push(document);
@@ -64,7 +64,6 @@ export async function getDocuments() {
   // Combine documents
   const allDocuments = [...standardDocuments, ...pdfDocuments];
   
-  // Ensure private metadata is set
   for (const document of allDocuments) {
     document.metadata = {
       ...document.metadata,
