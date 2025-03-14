@@ -138,6 +138,17 @@ export function ConsolePage() {
   });
   const [marker, setMarker] = useState<Coordinates | null>(null);
 
+  const [showDefault, setShowDefault] = useState(true);
+
+  // Set a timer to hide the default image after 15 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowDefault(false);
+    }, 25000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  
   /**
    * Utility for formatting the timing of logs
    */
@@ -205,7 +216,16 @@ useEffect(() => {
     client.sendUserMessageContent([
       {
         type: `input_text`,
-        text: `HIDDEN_INSTRUCTION: Please respond with a welcome greeting that says, \"Welcome! I'm Echo, nice to meet you. I'm here to demo Revola AI. Do you want a demo first, or should we go into Q&A?\"`,
+        text:`HIDDEN_INSTRUCTION: 
+Begin the interaction with a warm, engaging tone. Start by saying: 
+"Hello and welcome to your live Revola demo! I’m Revola AI, your presenter today. I’ll walk you through how Revola can supercharge your sales process. But first, may I know your name?" 
+When the user responds (for example, "Hi, I’m Alex"), reply with: 
+"Nice to meet you, Alex! To personalize your experience, can I also get your email?" 
+After the user provides their email (e.g., "Sure, it’s alex@startup.com"), reply with: 
+"Great, Alex! Would you like to start with our product demo, or dive right into Q&A?" 
+Then, if the user says q7a ask for their questions. If they say demo transition to the demo scene by describing the screen changes: 
+"Revola is your AI-powered sales intelligence assistant. Here’s how it works: You enter your company’s website, and we instantly generate a full business overview. Then, our AI continuously finds companies that are showing buying signals—so you know exactly who to reach out to. We research these companies, identify key decision-makers, and even generate personalized outreach messages for you." 
+Finally, pause for further questions after demonstrating these features.`,
         // text: `For testing purposes, I want you to list ten car brands. Number each item, e.g. "one (or whatever number you are one): the item name".`
       },
     ]);
@@ -309,10 +329,17 @@ useEffect(() => {
     setCanPushToTalk(value === 'none');
   };
 
+  interface MediaItem {
+    type?: 'video' | 'image';
+    path: string;
+    caption?: string;
+  }
+  
   const [contextResponse, setContextResponse] = useState<{
     message: string;
-    images?: string[];
+    images?: MediaItem[];
   } | null>(null);
+  
   
 
   const injectContext = async (transcript: string) => {
@@ -449,6 +476,8 @@ useEffect(() => {
       isLoaded = false;
     };
   }, []);
+
+
 
   /**
    * Core RealtimeClient and audio capture setup
@@ -601,221 +630,108 @@ useEffect(() => {
    * Render the application
    */
   return (
-    <div data-component="ConsolePage">
-      <div className="content-top">
-        <div className="content-title">
-          <span>LlamaIndex - Voice Chat with PDFs</span>
-        </div>
-        <div className="content-api-key">
-          {!LOCAL_RELAY_SERVER_URL && (
-            <Button
-              icon={Edit}
-              iconPosition="end"
-              buttonStyle="flush"
-              label={`api key: ${apiKey.slice(0, 3)}...`}
-              onClick={() => resetAPIKey()}
-            />
-          )}
-        </div>
-      </div>
-      <div className="content-main">
-      <div className="content-logs">
-        <div className="content-block events">
-          <div className="visualization">
-            <div className="visualization-entry client">
-              <canvas ref={clientCanvasRef} />
-            </div>
-            <div className="visualization-entry server">
-              <canvas ref={serverCanvasRef} />
-            </div>
-          </div>
-          <div className="content-block-title">events</div>
-          <div className="content-block-body" ref={eventsScrollRef}>
-            {!realtimeEvents.length && `awaiting connection...`}
-            {realtimeEvents.map((realtimeEvent, i) => {
-              const count = realtimeEvent.count;
-              const event = { ...realtimeEvent.event };
-              if (event.type === 'input_audio_buffer.append') {
-                event.audio = `[trimmed: ${event.audio.length} bytes]`;
-              } else if (event.type === 'response.audio.delta') {
-                event.delta = `[trimmed: ${event.delta.length} bytes]`;
-              }
-              return (
-                <div className="event" key={event.event_id}>
-                  <div className="event-timestamp">
-                    {formatTime(realtimeEvent.time)}
-                  </div>
-                  <div className="event-details">
-                    <div
-                      className="event-summary"
-                      onClick={() => {
-                        const id = event.event_id;
-                        const expanded = { ...expandedEvents };
-                        if (expanded[id]) {
-                          delete expanded[id];
-                        } else {
-                          expanded[id] = true;
-                        }
-                        setExpandedEvents(expanded);
-                      }}
-                    >
-                      <div
-                        className={`event-source ${
-                          event.type === 'error'
-                            ? 'error'
-                            : realtimeEvent.source
-                        }`}
-                      >
-                        {realtimeEvent.source === 'client' ? (
-                          <ArrowUp />
-                        ) : (
-                          <ArrowDown />
-                        )}
-                        <span>
-                          {event.type === 'error'
-                            ? 'error!'
-                            : realtimeEvent.source}
-                        </span>
-                      </div>
-                      <div className="event-type">
-                        {event.type}
-                        {count && ` (${count})`}
-                      </div>
-                    </div>
-                    {!!expandedEvents[event.event_id] && (
-                      <div className="event-payload">
-                        {JSON.stringify(event, null, 2)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Render context image if available */}
-        {contextResponse && contextResponse.images && contextResponse.images.length > 0 && (
-          <div className="context-image" style={{ marginBottom: '20px' }}>
-            <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>Context Image:</div>
+    <div
+      data-component="ConsolePage"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        padding: '20px'
+      }}
+    >
+      {/* Context Media */}
+      <div className="context-media" style={{ marginBottom: '20px' }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>Context Media:</div>
+        {showDefault || !(contextResponse && contextResponse.images && contextResponse.images.length > 0) ? (
+          <div className="assistant-image" style={{ marginTop: '10px' }}>
             <img
-              src={contextResponse.images[0].replace(/^public/, '')} // Adjust path to be accessible
-              alt="Context related to answer"
-              style={{ maxWidth: '300px', border: '1px solid #ccc' }}
+              src="/images/default.png"
+              alt="Default context"
+              style={{ maxWidth: '1300px', border: '1px solid #ccc' }}
             />
-            <div style={{ fontSize: '12px', color: '#666' }}>
-              {contextResponse.images[0].replace(/^public/, '')}
-            </div>
           </div>
-        )}
-
-        <div className="content-block conversation">
-          <div className="content-block-title">conversation</div>
-          <div className="content-block-body" data-conversation-content>
-            {!items.length && `awaiting connection...`}
-            {items.map((conversationItem, i) => {
-              return (
-                <div className="conversation-item" key={conversationItem.id}>
-                  <div className={`speaker ${conversationItem.role || ''}`}>
-                    <div>
-                      {(
-                        conversationItem.role || conversationItem.type
-                      ).replaceAll('_', ' ')}
-                    </div>
-                    <div
-                      className="close"
-                      onClick={() =>
-                        deleteConversationItem(conversationItem.id)
-                      }
+        ) : (
+          (() => {
+            const media = contextResponse.images[0] as MediaItem | string;
+            if (typeof media === 'string') {
+              // Check if it's a video URL based on its path
+              if (media.includes('/videos/')) {
+                return (
+                  <div className="assistant-video" style={{ marginTop: '10px' }}>
+                    <video
+                      autoPlay
+                      muted
+                      controls
+                      style={{ maxWidth: '1300px', border: '1px solid #ccc' }}
                     >
-                      <X />
-                    </div>
+                      <source src={media.replace(/^public/, '')} type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
                   </div>
-                  <div className={`speaker-content`}>
-                    {/* tool response */}
-                    {conversationItem.type === 'function_call_output' && (
-                      <div>{conversationItem.formatted.output}</div>
-                    )}
-                    {/* tool call */}
-                    {!!conversationItem.formatted.tool && (
-                      <div>
-                        {conversationItem.formatted.tool.name}(
-                        {conversationItem.formatted.tool.arguments})
-                      </div>
-                    )}
-                    {!conversationItem.formatted.tool &&
-                      conversationItem.role === 'user' && (
-                        <div>
-                          {conversationItem.formatted.transcript ||
-                            (conversationItem.formatted.audio?.length
-                              ? '(awaiting transcript)'
-                              : conversationItem.formatted.text ||
-                                '(item sent)')}
-                        </div>
-                      )}
-                    {!conversationItem.formatted.tool &&
-                      conversationItem.role === 'assistant' && (
-                        <div>
-                          {conversationItem.formatted.transcript ||
-                            conversationItem.formatted.text ||
-                            '(truncated)'}
-                          {/* Optionally render assistant's image if available */}
-                          {(conversationItem as any).metadata?.image && (
-                            <div className="assistant-image" style={{ marginTop: '10px' }}>
-                              <img
-                                src={(conversationItem as any).metadata.image.replace(/^public/, '')}
-                                alt="Related context"
-                                style={{ maxWidth: '300px', border: '1px solid #ccc' }}
-                              />
-                              <div style={{ fontSize: '12px', color: '#666' }}>
-                                {(conversationItem as any).metadata.image.replace(/^public/, '')}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    {conversationItem.formatted.file && (
-                      <audio
-                        src={conversationItem.formatted.file.url}
-                        controls
-                      />
+                );
+              } else {
+                return (
+                  <div className="assistant-image" style={{ marginTop: '10px' }}>
+                    <img
+                      src={media.replace(/^public/, '')}
+                      alt="Context related to answer"
+                      style={{ maxWidth: '1300px', border: '1px solid #ccc' }}
+                    />
+                  </div>
+                );
+              }
+            } else if (typeof media === 'object' && media.path) {
+              if (media.type === 'video') {
+                return (
+                  <div className="assistant-video" style={{ marginTop: '10px' }}>
+                    <video
+                      autoPlay
+                      muted
+                      controls
+                      style={{ maxWidth: '500px', border: '1px solid #ccc' }}
+                    >
+                      <source src={media.path.replace(/^public/, '')} type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                    {media.caption && (
+                      <div style={{ fontSize: '12px', color: '#666' }}>{media.caption}</div>
                     )}
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div className="content-actions">
-          <Toggle
-            defaultValue={false}
-            labels={['manual', 'vad']}
-            values={['none', 'server_vad']}
-            onChange={(_, value) => changeTurnEndType(value)}
-          />
-          <div className="spacer" />
-          {isConnected && canPushToTalk && (
-            <Button
-              label={isRecording ? 'release to send' : 'push to talk'}
-              buttonStyle={isRecording ? 'alert' : 'regular'}
-              disabled={!isConnected || !canPushToTalk}
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-            />
-          )}
-          <div className="spacer" />
-          <Button
-            label={isConnected ? 'disconnect' : 'connect'}
-            iconPosition={isConnected ? 'end' : 'start'}
-            icon={isConnected ? X : Zap}
-            buttonStyle={isConnected ? 'regular' : 'action'}
-            onClick={
-              isConnected ? disconnectConversation : connectConversation
+                );
+              } else {
+                return (
+                  <div className="assistant-image" style={{ marginTop: '10px' }}>
+                    <img
+                      src={media.path.replace(/^public/, '')}
+                      alt="Context related to answer"
+                      style={{ maxWidth: '500px', border: '1px solid #ccc' }}
+                    />
+                    {media.caption && (
+                      <div style={{ fontSize: '12px', color: '#666' }}>{media.caption}</div>
+                    )}
+                  </div>
+                );
+              }
             }
-          />
-        </div>
+            return null;
+          })()
+        )}
       </div>
-    </div>
+  
+      {/* Controls: Toggle and Disconnect */}
+      <div className="controls" style={{ display: 'flex', gap: '10px' }}>
+        <Toggle
+          defaultValue={false}
+          labels={['manual', 'vad']}
+          values={['none', 'server_vad']}
+          onChange={(_, value) => changeTurnEndType(value)}
+        />
+        <Button
+          label={isConnected ? 'disconnect' : 'connect'}
+          icon={isConnected ? X : X}  //todo: replace with icons
+          onClick={isConnected ? disconnectConversation : connectConversation}
+        />
+      </div>
     </div>
   );
 }

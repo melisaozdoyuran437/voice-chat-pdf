@@ -1,3 +1,4 @@
+// engine/loader.ts
 import { SimpleDirectoryReader } from 'llamaindex';
 import { parsePDF } from './pdfParser';
 import { Document } from 'llamaindex';
@@ -16,11 +17,16 @@ export async function getDocuments() {
   }
   
   // Load non-PDF documents if needed
-  const standardDocuments = await new SimpleDirectoryReader().loadData({
+  const allStandardDocuments = await new SimpleDirectoryReader().loadData({
     directoryPath: DATA_DIR,
   });
-  
-  // Process each PDF file with our custom parser
+
+  const nonPdfDocuments = allStandardDocuments.filter(doc => {
+    return !doc.metadata.source?.endsWith('.pdf');
+  });
+  console.log(`Loaded ${nonPdfDocuments.length} non-PDF documents`);
+
+
   const files = fs.readdirSync(DATA_DIR);
   const pdfFiles = files.filter(file => path.extname(file).toLowerCase() === '.pdf');
   console.log(`Found ${pdfFiles.length} PDF files for image extraction: ${pdfFiles.join(', ')}`);
@@ -32,16 +38,32 @@ export async function getDocuments() {
     try {
       const parsedPDF = await parsePDF(filePath);
       
-      // Create a Document for each page
+      // For each page in the PDF, create a Document that includes only the images for that page
       for (const page of parsedPDF.pages) {
         // Filter images that belong to this page
         const pageImages = parsedPDF.extractedImages.filter(img => img.page === page.pageNumber);
+        console.log(`For page ${page.pageNumber} of ${file}, images:`, pageImages);
         
-        // Merge the caption (if any) into the page text
+        // Append caption to page text if available
         let pageText = page.text;
         if (pageImages.length > 0 && pageImages[0].caption) {
           pageText += `\n[Image Caption: ${pageImages[0].caption}]`;
         }
+        
+        // If this is page 23, add video data into the images array.
+        if (page.pageNumber === 23) {
+          // Push a video object into pageImages
+          pageImages.push({
+            type: 'video', 
+            page: 23,
+            key: 'demo',
+            path: 'public/videos/demo.mp4', 
+            caption: page.caption,
+          } as any);
+         
+          pageText += `\n[Video Caption: ${page.caption}]`;
+        }
+        
         
         const document = new Document({
           text: pageText,
@@ -50,7 +72,7 @@ export async function getDocuments() {
             source: filePath,
             private: 'false',
             pageNumber: page.pageNumber,
-            images: pageImages,
+            images: pageImages, 
           },
         });
         pdfDocuments.push(document);
@@ -61,16 +83,16 @@ export async function getDocuments() {
     }
   }
   
-  // Combine documents
-  const allDocuments = [...standardDocuments, ...pdfDocuments];
+  const combinedDocuments = [...pdfDocuments];
+  // const combinedDocuments = [...nonPdfDocuments, ...pdfDocuments];)
   
-  for (const document of allDocuments) {
+  for (const document of combinedDocuments) {
     document.metadata = {
       ...document.metadata,
       private: 'false',
     };
   }
   
-  console.log(`Returning ${allDocuments.length} combined documents`);
-  return allDocuments;
+  console.log(`Returning ${combinedDocuments.length} combined documents`);
+  return combinedDocuments;
 }
