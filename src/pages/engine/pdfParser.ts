@@ -33,7 +33,7 @@ export async function parsePDF(filePath: string): Promise<{
         caption = "How to Log In to Revola AI – Learn about passwordless authentication, prerequisites, and a step-by-step guide to log in.";
         break;
       case 3:
-        caption = "How to Sign Up for Revola AI – Overview and step-by-step instructions for the sign-up process.";
+        caption = "How to Sign Up and Get Started for Revola AI – Overview and step-by-step instructions for the sign-up process.";
         break;
       case 5:
         caption = "How to Add Seller Context – A guide to adding your seller context, including your URL, context sections, and troubleshooting.";
@@ -51,13 +51,13 @@ export async function parsePDF(filePath: string): Promise<{
         caption = "Manual Company Research – Prerequisites and a step-by-step guide for company research.";
         break;
       case 13:
-        caption = "Understanding the Company Research Interface – Overview of panels, contacts, and insights.";
+        caption = "Understanding the Company Research Interface – Overview of panels, contacts, and insights. determine which companies are showing buying signals";
         break;
       case 15:
         caption = "Troubleshooting & FAQs for Company Research – Common issues and solutions.";
         break;
       case 17:
-        caption = "Generating Personalized Messages – How to create personalized emails, LinkedIn messages, and landing pages.";
+        caption = "Generating Personalized Messages – How to create personalized emails, LinkedIn messages, and landing pages. finding decision-makers, personalized outreach";
         break;
       case 18:
         caption = "AI-Powered Personalization – Detailed guide to generating personalized messages.";
