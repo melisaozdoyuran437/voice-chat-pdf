@@ -105,7 +105,9 @@ export const WavRenderer = {
       const x = barSpacing + i * (barWidth + barSpacing);
       const y = center ? (canvas.height - height) / 2 : canvas.height - height;
       ctx.fillStyle = color;
-      ctx.fillRect(x, y, barWidth, height);
+      ctx.beginPath();
+      ctx.roundRect(x, y, barWidth, height, barWidth / 2); // Draw rounded bars
+      ctx.fill();
     }
   },
 };
