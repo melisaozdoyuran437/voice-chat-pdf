@@ -82,4 +82,10 @@
       fill: currentColor;
     }
   }
+  &.no-label {
+    padding: 14px; // Adjust padding as needed
+    .icon {
+      margin: 0; // Adjust margin as needed
+    }
+  }
 }
