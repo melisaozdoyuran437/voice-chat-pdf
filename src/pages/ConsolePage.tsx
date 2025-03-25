@@ -264,11 +264,17 @@ Begin the interaction with a warm, engaging tone. Start by saying:
 "Hello and welcome to your live Revola demo! I’m Revola AI, your presenter today. I’ll walk you through how Revola can supercharge your sales process. But first, may I know your name and email?" 
 When the user responds (for example, "Hi, I’m Alex and my email is  alex@startup.com""), reply with: 
 "Nice to meet you, , Alex! Would you like to start with our product demo, or dive right into Q&A?" 
-Then, if the user says q/a ask for their questions. If they say demo transition to the demo scene by describing the screen changes: 
-"Revola is your AI-powered sales intelligence assistant. Here’s how it works:You enter your company’s website, and we instantly generate a full business overview.
-Then, our AI continuously finds companies that are showing buying signals—so you know exactly who to reach out to.
-We research these companies, identify key decision-makers, and even generate personalized outreach messages for you.
-And soon, we’ll even have an AI agent that can run sales meetings for you!"
+Then, if the user says q/a ask for their questions. If they say demo transition to the demo sceneby reading this script exactly: 
+"Great! You’re actually talking to the product—pretty cool, right?"
+
+"I’m an autonomous AI sales rep. I learn your product from public info, ask my human colleagues when needed, and keep my bar high."
+
+"Every day, I find potential customers showing buying signals, identify key decision-makers, and send them personalized messages. My goal? Get them into meetings—just like this—to answer their questions and encourage sign-ups. If needed, I’ll loop in a human rep."
+
+"I also generate weekly reports on what’s working, so you can refine my approach. And if you prefer partial automation, you can use me to discover leads, run demos, or even add a ‘Live Demo’ button to your site."
+
+"So, what do you think—ready to put me to work?"
+"
 ." 
 Finally, pause for further questions after demonstrating these features.`,
         // text: `For testing purposes, I want you to list ten car brands. Number each item, e.g. "one (or whatever number you are one): the item name".`
@@ -715,6 +721,7 @@ Finally, pause for further questions after demonstrating these features.`,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
+<<<<<<< Updated upstream
         justifyContent: 'center',
         backgroundColor: '#f1f3f4',
         minHeight: '100vh',
@@ -1037,6 +1044,105 @@ Finally, pause for further questions after demonstrating these features.`,
           </div>
         </>
       )}
+=======
+        padding: '20px',
+        backgroundColor: '#151d2c'
+      }}
+    >
+      {/* Context Media */}
+      <div className="context-media" style={{ marginBottom: '20px' }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '5px' }}></div>
+        {showDefault || !(contextResponse && contextResponse.images && contextResponse.images.length > 0) ? (
+          <div className="assistant-image" style={{ marginTop: '10px' }}>
+            <img
+              src="/images/default.png"
+              alt="Default context"
+              style={{ maxWidth: '1300px',  }}
+            />
+          </div>
+        ) : (
+          (() => {
+            const media = contextResponse.images[0] as MediaItem | string;
+            if (typeof media === 'string') {
+              // Check if it's a video URL based on its path
+              if (media.includes('/videos/')) {
+                return (
+                  <div className="assistant-video" style={{ marginTop: '10px' }}>
+                    <video
+                      autoPlay
+                      muted
+                      controls
+                      style={{ maxWidth: '1300px' }}
+                    >
+                      <source src={media.replace(/^public/, '')} type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                  </div>
+                );
+              } else {
+                return (
+                  <div className="assistant-image" style={{ marginTop: '10px' }}>
+                    <img
+                      src={media.replace(/^public/, '')}
+                      alt="Context related to answer"
+                      style={{ maxWidth: '1300px', border: '1px solid #ccc' }}
+                    />
+                  </div>
+                );
+              }
+            } else if (typeof media === 'object' && media.path) {
+              if (media.type === 'video') {
+                return (
+                  <div className="assistant-video" style={{ marginTop: '10px' }}>
+                    <video
+                      autoPlay
+                      muted
+                      controls
+                      style={{ maxWidth: '500px', border: '1px solid #ccc' }}
+                    >
+                      <source src={media.path.replace(/^public/, '')} type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                    {media.caption && (
+                      <div style={{ fontSize: '12px', color: '#666' }}>{media.caption}</div>
+                    )}
+                  </div>
+                );
+              } else {
+                return (
+                  <div className="assistant-image" style={{ marginTop: '10px' }}>
+                    <img
+                      src={media.path.replace(/^public/, '')}
+                      alt="Context related to answer"
+                      style={{ maxWidth: '500px', border: '1px solid #ccc' }}
+                    />
+                    {media.caption && (
+                      <div style={{ fontSize: '12px', color: '#666' }}>{media.caption}</div>
+                    )}
+                  </div>
+                );
+              }
+            }
+            return null;
+          })()
+        )}
+      </div>
+  
+      {/* Controls: Toggle and Disconnect */}
+      <div className="controls" style={{ display: 'flex', gap: '10px' }}>
+        <Toggle
+          defaultValue={false}
+          labels={['manual', 'vad']}
+          values={['none', 'server_vad']}
+          onChange={(_, value) => changeTurnEndType(value)}
+        />
+        <Button
+          label={isConnected ? 'disconnect' : 'connect'}
+          icon={isConnected ? X : X}  //todo: replace with icons
+          onClick={isConnected ? disconnectConversation : connectConversation}
+        />
+      </div>
+>>>>>>> Stashed changes
     </div>
   );
 }
