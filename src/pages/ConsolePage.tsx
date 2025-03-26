@@ -252,6 +252,7 @@ export function ConsolePage() {
     // Update to open mic connection
     client.updateSession({
       turn_detection: { type: 'server_vad' },
+      model: 'gpt-4o-mini-realtime-preview-2024-12-17',
     });
 
     // Connect to realtime API
@@ -721,7 +722,6 @@ Finally, pause for further questions after demonstrating these features.`,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-<<<<<<< Updated upstream
         justifyContent: 'center',
         backgroundColor: '#f1f3f4',
         minHeight: '100vh',
@@ -1044,105 +1044,6 @@ Finally, pause for further questions after demonstrating these features.`,
           </div>
         </>
       )}
-=======
-        padding: '20px',
-        backgroundColor: '#151d2c'
-      }}
-    >
-      {/* Context Media */}
-      <div className="context-media" style={{ marginBottom: '20px' }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '5px' }}></div>
-        {showDefault || !(contextResponse && contextResponse.images && contextResponse.images.length > 0) ? (
-          <div className="assistant-image" style={{ marginTop: '10px' }}>
-            <img
-              src="/images/default.png"
-              alt="Default context"
-              style={{ maxWidth: '1300px',  }}
-            />
-          </div>
-        ) : (
-          (() => {
-            const media = contextResponse.images[0] as MediaItem | string;
-            if (typeof media === 'string') {
-              // Check if it's a video URL based on its path
-              if (media.includes('/videos/')) {
-                return (
-                  <div className="assistant-video" style={{ marginTop: '10px' }}>
-                    <video
-                      autoPlay
-                      muted
-                      controls
-                      style={{ maxWidth: '1300px' }}
-                    >
-                      <source src={media.replace(/^public/, '')} type="video/mp4" />
-                      Your browser does not support the video tag.
-                    </video>
-                  </div>
-                );
-              } else {
-                return (
-                  <div className="assistant-image" style={{ marginTop: '10px' }}>
-                    <img
-                      src={media.replace(/^public/, '')}
-                      alt="Context related to answer"
-                      style={{ maxWidth: '1300px', border: '1px solid #ccc' }}
-                    />
-                  </div>
-                );
-              }
-            } else if (typeof media === 'object' && media.path) {
-              if (media.type === 'video') {
-                return (
-                  <div className="assistant-video" style={{ marginTop: '10px' }}>
-                    <video
-                      autoPlay
-                      muted
-                      controls
-                      style={{ maxWidth: '500px', border: '1px solid #ccc' }}
-                    >
-                      <source src={media.path.replace(/^public/, '')} type="video/mp4" />
-                      Your browser does not support the video tag.
-                    </video>
-                    {media.caption && (
-                      <div style={{ fontSize: '12px', color: '#666' }}>{media.caption}</div>
-                    )}
-                  </div>
-                );
-              } else {
-                return (
-                  <div className="assistant-image" style={{ marginTop: '10px' }}>
-                    <img
-                      src={media.path.replace(/^public/, '')}
-                      alt="Context related to answer"
-                      style={{ maxWidth: '500px', border: '1px solid #ccc' }}
-                    />
-                    {media.caption && (
-                      <div style={{ fontSize: '12px', color: '#666' }}>{media.caption}</div>
-                    )}
-                  </div>
-                );
-              }
-            }
-            return null;
-          })()
-        )}
-      </div>
-  
-      {/* Controls: Toggle and Disconnect */}
-      <div className="controls" style={{ display: 'flex', gap: '10px' }}>
-        <Toggle
-          defaultValue={false}
-          labels={['manual', 'vad']}
-          values={['none', 'server_vad']}
-          onChange={(_, value) => changeTurnEndType(value)}
-        />
-        <Button
-          label={isConnected ? 'disconnect' : 'connect'}
-          icon={isConnected ? X : X}  //todo: replace with icons
-          onClick={isConnected ? disconnectConversation : connectConversation}
-        />
-      </div>
->>>>>>> Stashed changes
     </div>
   );
 }
