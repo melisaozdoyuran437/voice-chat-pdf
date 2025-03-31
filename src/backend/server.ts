@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import { initSettings } from './llama/settings';
 import { getDataSource } from './llama/index';
 import { createMessageContent } from '@llamaindex/core/response-synthesizers';
@@ -56,20 +57,33 @@ app.post('/query', async (req: Request, res: Response): Promise<void> => {
     );
     const textAnswer = extractText(content);
 
-    const imagePaths: string[] = [];
+    const filePaths: string[] = [];
     nodes.forEach((nodeItem) => {
       const meta = (nodeItem.node as any).metadata;
       if (meta && meta.images && Array.isArray(meta.images)) {
         meta.images.forEach((img: any) => {
           if (img.path) {
-            imagePaths.push(img.path);
+            // Determine the file extension
+            const ext = path.extname(img.path).toLowerCase();
+            if (ext === '.mp4') {
+              // For videos, assume the path is already correct
+              filePaths.push(img.path);
+            } else if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
+              // For images, return a relative path "public/images/<filename>"
+              const relativePath = path.join('public', 'images', path.basename(img.path));
+              filePaths.push(relativePath);
+            } else {
+              // Default to images folder if unknown extension
+              const relativePath = path.join('public', 'images', path.basename(img.path));
+              filePaths.push(relativePath);
+            }
           }
         });
       }
     });
-    console.log('[server] Image paths:', imagePaths);
+    console.log('[server] File paths:', filePaths);
 
-    res.status(200).json({ message: textAnswer, images: imagePaths });
+    res.status(200).json({ message: textAnswer, images: filePaths });
   } catch (error) {
     console.error('[server] Error:', error);
     res.status(500).json({ message: (error as Error).message });
