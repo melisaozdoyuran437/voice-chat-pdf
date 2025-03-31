@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
 import { PNG } from 'pngjs';
+import { IMAGES_DIR } from './shared';  // import the constant from shared
 
 export async function extractEmbeddedImages(filePath: string): Promise<{ page: number; key: string; path: string; }[]> {
   // Load the PDF using pdf-lib
@@ -11,12 +12,6 @@ export async function extractEmbeddedImages(filePath: string): Promise<{ page: n
   const pdfDoc = await PDFDocument.load(dataBuffer);
   const pages = pdfDoc.getPages();
   const extractedImages: { page: number; key: string; path: string; }[] = [];
-
-  // Ensure output directory for images exists
-  const imagesDir = "./public/images";
-  if (!fs.existsSync(imagesDir)) {
-    fs.mkdirSync(imagesDir, { recursive: true });
-  }
 
   // Loop through each page
   for (let i = 0; i < pages.length; i++) {
@@ -57,36 +52,33 @@ export async function extractEmbeddedImages(filePath: string): Promise<{ page: n
             const width = (widthObj as PDFNumber).asNumber();
             const height = (heightObj as PDFNumber).asNumber();
             const bitsPerComponent = (bitsObj as PDFNumber).asNumber();
-            let colorSpace = csObj.toString(); // e.g. '/DeviceRGB' or '/DeviceGray' or '/ICCBased ...'
+            let colorSpace = csObj.toString();
 
             let effectiveColorSpace = "";
             if (colorSpace.includes("ICCBased")) {
-            // Attempt to handle ICCBased color spaces that might be defined as an array.
-            let iccDict: any;
-            // If csObj is an array, get the second element; otherwise, lookup the object.
-            if (Array.isArray(csObj)) {
+              let iccDict: any;
+              if (Array.isArray(csObj)) {
                 iccDict = pdfDoc.context.lookup(csObj[1]);
-            } else {
+              } else {
                 iccDict = pdfDoc.context.lookup(csObj);
-            }
-            const nObj = iccDict instanceof PDFDict ? iccDict.get(PDFName.of("N")) : undefined;
-            const n = nObj ? (nObj as PDFNumber).asNumber() : undefined;
-            console.log(`ICCBased color space: N = ${n}`);
-            if (n === 1) {
+              }
+              const nObj = iccDict instanceof PDFDict ? iccDict.get(PDFName.of("N")) : undefined;
+              const n = nObj ? (nObj as PDFNumber).asNumber() : undefined;
+              console.log(`ICCBased color space: N = ${n}`);
+              if (n === 1) {
                 effectiveColorSpace = "DeviceGray";
-            } else if (n === 3) {
+              } else if (n === 3) {
                 effectiveColorSpace = "DeviceRGB";
-            } else {
-                // Fallback: assume RGB if not defined.
+              } else {
                 effectiveColorSpace = "DeviceRGB";
                 console.warn(`Falling back to DeviceRGB for ICCBased color space on page ${i+1}, key ${key.toString()}`);
-            }
+              }
             } else if (colorSpace.includes("DeviceGray")) {
-            effectiveColorSpace = "DeviceGray";
+              effectiveColorSpace = "DeviceGray";
             } else if (colorSpace.includes("DeviceRGB")) {
-            effectiveColorSpace = "DeviceRGB";
+              effectiveColorSpace = "DeviceRGB";
             } else {
-            effectiveColorSpace = "Unsupported";
+              effectiveColorSpace = "Unsupported";
             }
 
             if (effectiveColorSpace === "Unsupported") {
@@ -96,11 +88,9 @@ export async function extractEmbeddedImages(filePath: string): Promise<{ page: n
 
             console.log(`Image parameters: width=${width}, height=${height}, bitsPerComponent=${bitsPerComponent}, effectiveColorSpace=${effectiveColorSpace}`);
 
-            // Create a new PNG using pngjs
             const png = new PNG({ width, height });
 
             if (effectiveColorSpace === "DeviceGray") {
-              // Expect raw data: one byte per pixel
               if (rawImageBytes.length !== width * height) {
                 throw new Error("Unexpected data length for DeviceGray image");
               }
@@ -112,7 +102,6 @@ export async function extractEmbeddedImages(filePath: string): Promise<{ page: n
                 png.data[j * 4 + 3] = 255;
               }
             } else if (effectiveColorSpace === "DeviceRGB") {
-              // Expect raw data: three bytes per pixel
               if (rawImageBytes.length !== width * height * 3) {
                 throw new Error("Unexpected data length for DeviceRGB image");
               }
@@ -124,7 +113,6 @@ export async function extractEmbeddedImages(filePath: string): Promise<{ page: n
               }
             }
 
-            // Write the PNG image to a buffer
             imageBytes = PNG.sync.write(png);
           } catch (err) {
             console.error(`Error processing FlateDecode image on page ${i+1}, key ${key.toString()}:`, err);
@@ -132,11 +120,9 @@ export async function extractEmbeddedImages(filePath: string): Promise<{ page: n
           }
         }
 
-        // Sanitize the key
         const sanitizedKey = key.toString().replace(/[\/\\]/g, '_');
-        // Create a file name and save the image
         const imageFileName = `extracted_page${i + 1}_${sanitizedKey}.${extension}`;
-        const imagePath = path.join("public", "images", imageFileName);
+        const imagePath = path.join(IMAGES_DIR, imageFileName);  // use the absolute path
         fs.writeFileSync(imagePath, imageBytes);
         extractedImages.push({
           page: i + 1,

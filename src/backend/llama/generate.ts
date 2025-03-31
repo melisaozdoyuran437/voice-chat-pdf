@@ -1,13 +1,11 @@
+// src/backend/llama/generate.ts
 import { VectorStoreIndex } from 'llamaindex';
 import { storageContextFromDefaults } from 'llamaindex';
-
 import * as dotenv from 'dotenv';
-
 import { getDocuments } from './loader';
 import { initSettings } from './settings';
 import { STORAGE_CACHE_DIR } from './shared';
 
-// Load environment variables from local .env file
 dotenv.config();
 
 async function getRuntime(func: any) {
@@ -19,18 +17,14 @@ async function getRuntime(func: any) {
 
 async function generateDatasource() {
   console.log(`Generating storage context...`);
-  // Split documents, create embeddings and store them in the storage context
   const ms = await getRuntime(async () => {
     const storageContext = await storageContextFromDefaults({
       persistDir: STORAGE_CACHE_DIR,
     });
     const documents = await getDocuments();
-
-    await VectorStoreIndex.fromDocuments(documents, {
-      storageContext,
-    });
+    await VectorStoreIndex.fromDocuments(documents, { storageContext });
   });
-  console.log(`Storage context successfully generated in ${ms / 1000}s.`);
+  console.log(`Storage context generated in ${ms / 1000}s.`);
 }
 
 (async () => {
