@@ -19,17 +19,8 @@ import { WavRecorder, WavStreamPlayer } from '../lib/wavtools/index.js';
 import { instructions } from '../utils/conversation_config.js';
 import { WavRenderer } from '../utils/wav_renderer';
 
-import {
- 
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
-  
-  PhoneOff,
-} from 'react-feather';
+import { Mic, MicOff, Video, VideoOff, PhoneOff } from 'react-feather';
 import { Button } from '../components/button/Button';
-
 
 /**
  * Type for all event logs
@@ -198,7 +189,6 @@ export function ConsolePage() {
       videoRef.current.srcObject = blackStreamRef.current;
     }
 
-
     // Comment out the initial webcam start
     // startWebcam();
 
@@ -238,32 +228,38 @@ export function ConsolePage() {
       model: 'gpt-4o-mini-realtime-preview-2024-12-17',
     });
 
+    const response = await fetch(`http://127.0.0.1:8000/initialize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: 'kyle', email: 'kylez56789@gmail.com' }),
+    });
+    const data = await response.json();
+    console.log('API response:', data); // Debug log
+    setSessionUUID(data.sessionUUID);
+
+    const intro = data.response;
+
     // Connect to realtime API
-    await client.connect();
+    try {
+      await client.connect();
+      console.log('RealtimeClient connected successfully');
+    } catch (error) {
+      console.error('Failed to connect RealtimeClient:', error);
+      throw new Error('RealtimeClient connection failed');
+    }
+
     client.sendUserMessageContent([
       {
         type: `input_text`,
-        text: `HIDDEN_INSTRUCTION: 
-Begin the interaction with a warm, engaging tone. Start by saying: 
-"Hello and welcome to your live Revola demo! I’m Revola AI, your presenter today. I’ll walk you through how Revola can supercharge your sales process. But first, may I know your name and email?" 
-When the user responds (for example, "Hi, I’m Alex and my email is  alex@startup.com"), reply with: 
-"Nice to meet you, , Alex! Would you like to start with our product demo, or dive right into Q&A?" 
-Then, if the user says q/a ask for their questions. If they say demo transition to the demo sceneby reading this script exactly: 
-"Great! You’re actually talking to the product—pretty cool, right?"
-
-"I’m an autonomous AI sales rep. I learn your product from public info, ask my human colleagues when needed, and keep my bar high."
-
-"Every day, I find potential customers showing buying signals, identify key decision-makers, and send them personalized messages. My goal? Get them into meetings—just like this—to answer their questions and encourage sign-ups. If needed, I’ll loop in a human rep."
-
-"I also generate weekly reports on what’s working, so you can refine my approach. And if you prefer partial automation, you can use me to discover leads, run demos, or even add a ‘Live Demo’ button to your site."
-
-"So, what do you think—ready to put me to work?"
-"
-." 
-Finally, pause for further questions after demonstrating these features.`,
-        // text: `For testing purposes, I want you to list ten car brands. Number each item, e.g. "one (or whatever number you are one): the item name".`
+        text: intro,
       },
     ]);
+
+    if (client.getTurnDetectionType() === null) {
+      client.createResponse();
+    }
 
     // Set state variables
     startTimeRef.current = new Date().toISOString();
@@ -434,12 +430,12 @@ Finally, pause for further questions after demonstrating these features.`,
       {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query: transcript })
-      }
+        body: JSON.stringify({ query: transcript }),
+      },
     );
-    
+
     const data = await response.json();
     console.log('API response:', data); // Debug log
     setContextResponse(data);
@@ -709,7 +705,6 @@ Finally, pause for further questions after demonstrating these features.`,
     <div
       data-component="ConsolePage"
       style={{
-
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
@@ -719,7 +714,6 @@ Finally, pause for further questions after demonstrating these features.`,
         overflowY: 'hidden',
         margin: 0,
         padding: 0,
-  
       }}
     >
       <img
@@ -731,31 +725,30 @@ Finally, pause for further questions after demonstrating these features.`,
           right: '10px',
           width: '50px',
           height: '50px',
-              
         }}
       />
-       {!isConnected ? (
-      <Button
-        label="Connect"
-        onClick={connectConversation}
-        style={{
-          marginTop: '20px',
-          padding: '15px 30px',
-          borderRadius: '10px',
-          border: 'none',
-          backgroundColor: 'rgba(183, 82, 255, 0.9)', 
-          color: '#ffffff',
-          cursor: 'pointer',
-          fontSize: '18px',
-          fontWeight: 'bold',
-          textTransform: 'uppercase',
-          transition: 'all 0.3s ease',
-          boxShadow: '0 0 25px rgba(183, 82, 255, 0.9)',
-          transform: 'perspective(1px) translateZ(0)',
-          animation: 'pulse 2s infinite',
-        }}
-      />
-    ) : (
+      {!isConnected ? (
+        <Button
+          label="Connect"
+          onClick={connectConversation}
+          style={{
+            marginTop: '20px',
+            padding: '15px 30px',
+            borderRadius: '10px',
+            border: 'none',
+            backgroundColor: 'rgba(183, 82, 255, 0.9)',
+            color: '#ffffff',
+            cursor: 'pointer',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            textTransform: 'uppercase',
+            transition: 'all 0.3s ease',
+            boxShadow: '0 0 25px rgba(183, 82, 255, 0.9)',
+            transform: 'perspective(1px) translateZ(0)',
+            animation: 'pulse 2s infinite',
+          }}
+        />
+      ) : (
         <>
           <div
             style={{
@@ -765,7 +758,7 @@ Finally, pause for further questions after demonstrating these features.`,
               backgroundColor: '#171717',
               gap: '20px',
             }}
-          > 
+          >
             {/* Context Media */}
             <div
               className="context-media"
@@ -774,10 +767,17 @@ Finally, pause for further questions after demonstrating these features.`,
                 justifyContent: 'center',
                 display: 'flex',
                 flexDirection: 'column',
-                alignItems: 'center',         
+                alignItems: 'center',
               }}
             >
-              <h2 style={{ fontSize: '30px', fontWeight: 'bold',  marginLeft: '200px', color: ' #f1f3f4'}}>
+              <h2
+                style={{
+                  fontSize: '30px',
+                  fontWeight: 'bold',
+                  marginLeft: '200px',
+                  color: ' #f1f3f4',
+                }}
+              >
                 Revola AI's Screen
               </h2>
               {showDefault ||
@@ -788,17 +788,17 @@ Finally, pause for further questions after demonstrating these features.`,
               ) ? (
                 <div className="assistant-image">
                   <img
-                    src="/images/default.png" alt="Default"
+                    src="/images/default.png"
+                    alt="Default"
                     style={{
                       maxWidth: '1000px',
                       maxHeight: '700px',
                       borderRadius: '20px',
                       marginLeft: '200px',
-                      boxShadow: '0 0 20px rgba(149, 76, 252, 0.6)', 
+                      boxShadow: '0 0 20px rgba(149, 76, 252, 0.6)',
                     }}
                   />
                 </div>
-
               ) : (
                 (() => {
                   const media = contextResponse.images[0] as MediaItem | string;
@@ -815,8 +815,7 @@ Finally, pause for further questions after demonstrating these features.`,
                               maxHeight: '700px',
                               border: '1px solid #000',
                               borderRadius: '10px',
-                              marginLeft: '150px'
-                              
+                              marginLeft: '150px',
                             }}
                           >
                             <source
@@ -839,7 +838,6 @@ Finally, pause for further questions after demonstrating these features.`,
                               marginLeft: '150px',
                               border: '1px solid #000',
                               borderRadius: '10px',
-                                
                             }}
                           />
                         </div>
@@ -853,7 +851,7 @@ Finally, pause for further questions after demonstrating these features.`,
                             autoPlay
                             muted
                             controls
-                            style={{ maxWidth: '200px',   marginLeft: '150px'}}
+                            style={{ maxWidth: '200px', marginLeft: '150px' }}
                           >
                             <source
                               src={media.path.replace(/^public/, '')}
@@ -874,7 +872,7 @@ Finally, pause for further questions after demonstrating these features.`,
                           <img
                             src={media.path.replace(/^public/, '')}
                             alt="Context related to answer"
-                            style={{ maxWidth: '500px',   marginLeft: '150px' }}
+                            style={{ maxWidth: '500px', marginLeft: '150px' }}
                           />
                           {media.caption && (
                             <div style={{ fontSize: '12px', color: '#666' }}>
@@ -903,30 +901,32 @@ Finally, pause for further questions after demonstrating these features.`,
                 style={{
                   position: 'relative',
                   textAlign: 'center',
-                  marginRight: '200px'
-
+                  marginRight: '200px',
                 }}
               >
-                <h2 className="text-center text-lg font-semibold mb-2 text-gray-100" style={{ color: '#ffffff' }}>
+                <h2
+                  className="text-center text-lg font-semibold mb-2 text-gray-100"
+                  style={{ color: '#ffffff' }}
+                >
                   You
                 </h2>
                 <div className="webcam-view">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  style={{
-                    width: '100%',
-                    maxWidth: '300px',
-                    height: '200px',
-                    backgroundColor: 'black',
-                    boxShadow: isUserSpeaking
-                      ? '0 0 10px 3px oklch(0.627 0.265 303.9)'
-                      : 'none',
-                    border: '3px solid #000',
-                    borderRadius: '20px',
-                  }}
-                />
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    style={{
+                      width: '100%',
+                      maxWidth: '300px',
+                      height: '200px',
+                      backgroundColor: 'black',
+                      boxShadow: isUserSpeaking
+                        ? '0 0 10px 3px oklch(0.627 0.265 303.9)'
+                        : 'none',
+                      border: '3px solid #000',
+                      borderRadius: '20px',
+                    }}
+                  />
                   <canvas
                     ref={clientCanvasRef}
                     style={{
@@ -935,8 +935,8 @@ Finally, pause for further questions after demonstrating these features.`,
                       position: 'absolute',
                       top: '60px',
                       right: '10px',
-                      borderRadius: '100%',             
-                      overflow: 'hidden',                      
+                      borderRadius: '100%',
+                      overflow: 'hidden',
                       border: isUserSpeaking
                         ? '3px solid oklch(0.627 0.265 303.9)'
                         : 'none',
@@ -949,10 +949,13 @@ Finally, pause for further questions after demonstrating these features.`,
                 style={{
                   position: 'relative',
                   textAlign: 'center',
-                   marginRight: '200px'
+                  marginRight: '200px',
                 }}
               >
-                <h2 className="text-center text-lg font-semibold mb-2" style={{ color: '#ffffff' }}>
+                <h2
+                  className="text-center text-lg font-semibold mb-2"
+                  style={{ color: '#ffffff' }}
+                >
                   Revola AI
                 </h2>
                 <div className="webcam-view">
@@ -969,7 +972,6 @@ Finally, pause for further questions after demonstrating these features.`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                     
                     }}
                   >
                     <img
@@ -989,7 +991,7 @@ Finally, pause for further questions after demonstrating these features.`,
                         top: '60px',
                         right: '10px',
                         borderRadius: '100%',
-                        overflow: 'hidden',                      
+                        overflow: 'hidden',
                         border: isAgentSpeaking
                           ? '3px solid oklch(0.627 0.265 303.9)'
                           : 'none',
@@ -1007,20 +1009,20 @@ Finally, pause for further questions after demonstrating these features.`,
                     flexDirection: 'row',
                   }}
                 >
-                 <input
-                  type="text"
-                  value={textInput}
-                  onChange={handleTextInputChange}
-                  placeholder="Type your message here"
-                  style={{
-                    width: '80%',
-                    padding: '10px',
-                    borderRadius: '5px',
-                    border: '1px solid #ccc',
-                    backgroundColor: 'rgba(34, 34, 34, 0.81)', 
-                    color: 'rgb(255, 255, 255)', 
-                  }}
-                />
+                  <input
+                    type="text"
+                    value={textInput}
+                    onChange={handleTextInputChange}
+                    placeholder="Type your message here"
+                    style={{
+                      width: '80%',
+                      padding: '10px',
+                      borderRadius: '5px',
+                      border: '1px solid #ccc',
+                      backgroundColor: 'rgba(34, 34, 34, 0.81)',
+                      color: 'rgb(255, 255, 255)',
+                    }}
+                  />
 
                   <button
                     onClick={handleTextInputSubmit}
