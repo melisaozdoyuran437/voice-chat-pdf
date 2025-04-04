@@ -55,7 +55,9 @@ export function ConsolePage() {
     if (apiKey || LOCAL_RELAY_SERVER_URL) {
       clientRef.current = new RealtimeClient(
         LOCAL_RELAY_SERVER_URL
-          ? { url: LOCAL_RELAY_SERVER_URL }
+          ? {
+              url: LOCAL_RELAY_SERVER_URL,
+            }
           : {
               apiKey: apiKey,
               dangerouslyAllowAPIKeyInBrowser: true,
@@ -112,10 +114,11 @@ export function ConsolePage() {
   const [showDefault, setShowDefault] = useState(true);
   const [textInput, setTextInput] = useState('');
   const [showLogs, setShowLogs] = useState(false);
+  const [sessionUUID, setSessionUUID] = useState<string>(null);
 
   /* Voice Recording Variables */
 
-  const [isRecording, setIsRecording] = useState(true);
+  const [isRecording, setIsRecording] = useState(false);
 
   /* Recording Video Variables */
 
@@ -237,9 +240,9 @@ export function ConsolePage() {
     });
     const data = await response.json();
     console.log('API response:', data); // Debug log
-    setSessionUUID(data.sessionUUID);
+    setSessionUUID(data.uuid);
 
-    const intro = data.response;
+    const intro = data.message;
 
     // Connect to realtime API
     try {
@@ -257,10 +260,6 @@ export function ConsolePage() {
       },
     ]);
 
-    if (client.getTurnDetectionType() === null) {
-      client.createResponse();
-    }
-
     // Set state variables
     startTimeRef.current = new Date().toISOString();
     setIsConnected(true);
@@ -268,8 +267,13 @@ export function ConsolePage() {
     setItems(client.conversation.getItems());
     console.log('Connected to conversation');
     console.log(isRecording);
-    if (isRecording) {
-      await wavRecorder.record((data) => client.appendInputAudio(data.mono));
+    console.log(client.isConnected());
+    if (client.isConnected()) {
+      if (isRecording) {
+        await wavRecorder.record((data) => client.appendInputAudio(data.mono));
+      }
+    } else {
+      console.error('RealtimeClient is not connected');
     }
   }, [isRecording]);
 
@@ -424,42 +428,32 @@ export function ConsolePage() {
 
     transcript = transcript.trim();
     if (!transcript) return;
-
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BACKEND_URL}/query`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query: transcript }),
+    console.log('Payload:', { uuid: sessionUUID, query: transcript });
+    const response = await fetch(`http://127.0.0.1:8000/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({ uuid: sessionUUID, query: transcript }),
+    });
 
     const data = await response.json();
     console.log('API response:', data); // Debug log
     setContextResponse(data);
-
-    // 2. Combine transcript + context into one user message
+    // 3. Send the combined message as a user message
     const combinedMessage = `
   User said: "${transcript}"
   
-  Relevant context:
+  Follow the next set of instructions exactly:
   ${data.message}
     `;
-
-    // 3. Send the combined message as a user message
     client.sendUserMessageContent([
       {
         type: 'input_text',
         text: combinedMessage,
       },
     ]);
-
-    // 4. Trigger assistant’s response if needed
-    if (client.getTurnDetectionType() === null) {
-      client.createResponse();
-    }
+    console.log(combinedMessage);
   };
 
   /**
