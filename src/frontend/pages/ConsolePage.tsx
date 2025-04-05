@@ -442,18 +442,17 @@ export function ConsolePage() {
     setContextResponse(data);
     // 3. Send the combined message as a user message
     const combinedMessage = `
-  User said: "${transcript}"
-  
-  Follow the next set of instructions exactly:
-  ${data.message}
-    `;
+      User said: "${transcript}"
+      
+      Follow the next set of instructions exactly:
+      ${data.message}`;
+    console.log(combinedMessage);
     client.sendUserMessageContent([
       {
         type: 'input_text',
         text: combinedMessage,
       },
     ]);
-    console.log(combinedMessage);
   };
 
   /**
