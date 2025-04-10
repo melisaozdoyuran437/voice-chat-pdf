@@ -227,9 +227,25 @@ export function ConsolePage() {
 
     // Update to open mic connection
     client.updateSession({
-      turn_detection: { type: 'server_vad' },
       model: 'gpt-4o-mini-realtime-preview-2024-12-17',
+      voice: 'alloy',
+      modalities: ['text', 'audio'],
+      instructions: `You are a helpful fast-talking and warm voice assistant. Wait a full moment after the user finishes speaking before replying. Do not interrupt. Be expressive and natural.`,
+      input_audio_format: 'pcm16',
+      output_audio_format: 'pcm16',
+      input_audio_noise_reduction: {
+        type: 'far_field'
+      },
+      input_audio_transcription: {
+        model: 'whisper-1',
+      },
+      turn_detection: {
+        type: 'semantic_vad'
+      },
+      temperature: 0.65,
+      max_response_output_tokens: 1000
     });
+    
 
     const response = await fetch(`http://127.0.0.1:8000/initialize`, {
       method: 'POST',
