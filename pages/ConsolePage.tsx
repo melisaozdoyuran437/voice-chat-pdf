@@ -1,24 +1,11 @@
-/**
- * Running a local relay server will allow you to hide your API key
- * and run custom logic on the server
- *
- * Set the local relay server address to:
- * REACT_APP_LOCAL_RELAY_SERVER_URL=http://localhost:8081
- *
- * This will also require you to set OPENAI_API_KEY= in a `.env` file
- * You can run it with `npm run relay`, in parallel with `npm start`
- */
 const LOCAL_RELAY_SERVER_URL: string =
   process.env.REACT_APP_LOCAL_RELAY_SERVER_URL || '';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
-
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { RealtimeClient } from '@openai/realtime-api-beta';
 import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
 import { WavRecorder, WavStreamPlayer } from '../lib/wavtools/index.js';
-import { instructions } from '../utils/conversation_config.js';
 import { WavRenderer } from '../utils/wav_renderer';
-
 import { Mic, MicOff, Video, VideoOff, PhoneOff } from 'react-feather';
 import { Button } from '../components/button/Button';
 
@@ -32,7 +19,11 @@ interface RealtimeEvent {
   event: { [key: string]: any };
 }
 
-export function ConsolePage() {
+interface Props {
+  companyName: string;
+}
+
+export default function ConsolePage({ companyName }: Props) {
   const [apiKey, setApiKey] = useState<string>('');
   const clientRef = useRef<RealtimeClient | null>(null);
 
@@ -95,40 +86,19 @@ export function ConsolePage() {
   const eventsScrollRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<string>(new Date().toISOString());
   const blackStreamRef = useRef<MediaStream | null>(null);
-
-  /**
-   * All of our variables for displaying application state
-   * - items are all conversation items (dialog)
-   * - realtimeEvents are event logs, which can be expanded
-   * - memoryKv is for set_memory() function
-   * - coords, marker are for get_weather() function
-   */
   const [items, setItems] = useState<ItemType[]>([]);
-
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([]);
-  const [expandedEvents, setExpandedEvents] = useState<{
-    [key: string]: boolean;
-  }>({});
   const [isConnected, setIsConnected] = useState(false);
   const recordedChunksRef = useRef<Blob[]>([]);
   const [memoryKv, setMemoryKv] = useState<{ [key: string]: any }>({});
   const [showDefault, setShowDefault] = useState(true);
   const [textInput, setTextInput] = useState('');
-  const [showLogs, setShowLogs] = useState(false);
   const [sessionUUID, setSessionUUID] = useState<string>(null);
-
-  /* Voice Recording Variables */
-
   const [isRecording, setIsRecording] = useState(false);
-
-  /* Recording Video Variables */
 
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isVideoRecording, setIsVideoRecording] = useState(false);
 
-  /**
-   * States for user and assistant speaking
-   */
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
 
@@ -139,29 +109,6 @@ export function ConsolePage() {
     }, 25000);
     return () => clearTimeout(timer);
   }, []);
-
-  /**
-   * Utility for formatting the timing of logs
-   */
-  const formatTime = useCallback((timestamp: string) => {
-    const startTime = startTimeRef.current;
-    const t0 = new Date(startTime).valueOf();
-    const t1 = new Date(timestamp).valueOf();
-    const delta = t1 - t0;
-    const hs = Math.floor(delta / 10) % 100;
-    const s = Math.floor(delta / 1000) % 60;
-    const m = Math.floor(delta / 60_000) % 60;
-    const pad = (n: number) => {
-      let s = n + '';
-      while (s.length < 2) {
-        s = '0' + s;
-      }
-      return s;
-    };
-    return `${pad(m)}:${pad(s)}.${pad(hs)}`;
-  }, []);
-
-  // console.log("Conversation items:", items);
 
   // Now place the useEffect after the state declaration
   useEffect(() => {
@@ -185,30 +132,18 @@ export function ConsolePage() {
         console.error('Error requesting permissions:', error);
       }
     };
-
     requestPermissions();
     // Create a black stream and set it as the initial video source
     createBlackStream();
     if (videoRef.current && blackStreamRef.current) {
       videoRef.current.srcObject = blackStreamRef.current;
     }
-
-    // Comment out the initial webcam start
-    // startWebcam();
-
     return () => {
       if (videoRef.current?.srcObject instanceof MediaStream) {
         videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);
-
-  // useEffect(() => {
-  //   window.addEventListener('beforeunload', saveVideoRecording);
-  //   return () => {
-  //     window.removeEventListener('beforeunload', saveVideoRecording);
-  //   };
-  // }, []);
 
   /**
    * Connect to conversation:
@@ -249,15 +184,22 @@ export function ConsolePage() {
     });
     console.log(client.sessionConfig);
 
-    const response = await fetch(`http://127.0.0.1:8000/initialize`, {
+    const response = await fetch('http://127.0.0.1:8000/initialize', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ name: 'kyle', email: 'kylez56789@gmail.com' }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company: companyName,    
+        name: 'kyle',
+        email: 'kylez56789@gmail.com'
+      }),
     });
+    if (!response.ok) {
+      const err = await response.json();
+      console.error('Init error:', err);
+      return;
+    }
     const data = await response.json();
-    console.log('API response:', data); // Debug log
+    console.log('API response:', data);
     setSessionUUID(data.uuid);
 
     const intro = data.message;
@@ -315,12 +257,6 @@ export function ConsolePage() {
     await wavStreamPlayer.interrupt();
   }, []);
 
-  const deleteConversationItem = useCallback(async (id: string) => {
-    const client = clientRef.current;
-    if (!client) throw new Error('RealtimeClient is not initialized');
-    client.deleteItem(id);
-  }, []);
-
   /**
    * Unmute Audio Input
    */
@@ -361,23 +297,6 @@ export function ConsolePage() {
     }
   };
 
-  {
-    /*  Video Recording Functions */
-  }
-  const startVideoRecording = (stream: MediaStream) => {
-    mediaRecorderRef.current = new MediaRecorder(stream);
-    recordedChunksRef.current = [];
-
-    mediaRecorderRef.current.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        recordedChunksRef.current.push(event.data);
-      }
-    };
-
-    mediaRecorderRef.current.start();
-    setIsVideoRecording(true);
-  };
-
   const createBlackStream = () => {
     const canvas = document.createElement('canvas');
     canvas.width = 640;
@@ -389,18 +308,6 @@ export function ConsolePage() {
     }
     const stream = canvas.captureStream(30);
     blackStreamRef.current = stream;
-  };
-
-  const saveVideoRecording = () => {
-    const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.style.display = 'none';
-    a.href = url;
-    a.download = 'recorded_video.webm';
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
   };
 
   const toggleCamera = () => {
@@ -442,39 +349,57 @@ export function ConsolePage() {
 
   const injectContext = async (transcript: string) => {
     const client = clientRef.current;
-    console.log(client.sessionConfig);
-    if (!client) throw new Error('RealtimeClient is not initialized');
-
+    if (!client || !sessionUUID) throw new Error("Session not ready");
+  
     transcript = transcript.trim();
     if (!transcript) return;
-    console.log('Payload:', { uuid: sessionUUID, query: transcript });
-    const response = await fetch(`http://127.0.0.1:8000/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ uuid: sessionUUID, query: transcript }),
-    });
+  
+    const items = client.conversation.getItems();
+    const lastAssistant = items
+      .filter((i) => i.role === "assistant")
+      .reverse()[0];
 
-    const data = await response.json();
-    console.log('API response:', data); // Debug log
-    setContextResponse(data);
-    // 3. Send the combined message as a user message
-    const combinedMessage = `
-    The user said: ${transcript}
-
-    Reply with something similar to the example
-    EXAMPLE:
-      ${data.message}`;
-    console.log(combinedMessage);
+    if (lastAssistant) {
+      client.cancelResponse(lastAssistant.id);
+}
+  
+    // 2) Give the socket a moment to settle (optional, but avoids races)
+    await new Promise((r) => setTimeout(r, 50));
+  
+    // 3) Fetch your vector‑store answer from your FastAPI
+    let data: { message: string; images: any[] };
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uuid: sessionUUID, query: transcript }),
+      });
+      if (!res.ok) {
+        console.error("Backend error:", await res.text());
+        return;
+      }
+      data = await res.json();
+    } catch (err) {
+      console.error("Fetch failed:", err);
+      return;
+    }
+  
+    // 4) Build one clear instruction + context string
+    const prompt = `Here’s the relevant documentation:
+  
+  ${data.message}
+  
+  Now answer the user’s question *only* based on that documentation.
+  
+  User’s question: → ${transcript}`;
+  
+    // 5) Finally, send this single prompt
     client.sendUserMessageContent([
-      {
-        type: 'input_text',
-        text: combinedMessage,
-      },
+      { type: "input_text", text: prompt },
     ]);
   };
-
+  
+  
   /**
    * Auto-scroll the event logs
    */
@@ -605,112 +530,58 @@ export function ConsolePage() {
     setTextInput('');
   };
 
-  const toggleLogs = () => {
-    setShowLogs((prevShowLogs) => !prevShowLogs);
-  };
-
   /**
    * Core RealtimeClient and audio capture setup
    * Set all of our instructions, tools, events and more
    */
   useEffect(() => {
-    // Get refs
-    const wavStreamPlayer = wavStreamPlayerRef.current;
-    const client = clientRef.current;
-    if (!client) return;
-
-    // Set instructions
-    client.updateSession({ instructions: instructions });
-    // Set transcription, otherwise we don't get user transcriptions back
-    client.updateSession({ input_audio_transcription: { model: 'whisper-1' } });
-
-    // Add tools
-    client.addTool(
-      {
-        name: 'set_memory',
-        description: 'Saves important data about the user into memory.',
-        parameters: {
-          type: 'object',
-          properties: {
-            key: {
-              type: 'string',
-              description:
-                'The key of the memory value. Always use lowercase and underscores, no other characters.',
-            },
-            value: {
-              type: 'string',
-              description: 'Value can be anything represented as a string',
-            },
-          },
-          required: ['key', 'value'],
-        },
-      },
-      async ({ key, value }: { [key: string]: any }) => {
-        setMemoryKv((memoryKv) => {
-          const newKv = { ...memoryKv };
-          newKv[key] = value;
-          return newKv;
-        });
-        return { ok: true };
-      },
-    );
-
-    // handle realtime events from client + server for event logging
-    client.on('realtime.event', async (realtimeEvent: RealtimeEvent) => {
-      if (
-        realtimeEvent.event.type ===
-        'conversation.item.input_audio_transcription.completed'
-      ) {
-        console.log(
-          'conversation.item.input_audio_transcription.completed',
-          realtimeEvent,
-        );
-        // transcript of a user message is available
-        await injectContext(realtimeEvent.event.transcript);
-      }
-      setRealtimeEvents((realtimeEvents) => {
-        const lastEvent = realtimeEvents[realtimeEvents.length - 1];
-        if (lastEvent?.event.type === realtimeEvent.event.type) {
-          // if we receive multiple events in a row, aggregate them for display purposes
-          lastEvent.count = (lastEvent.count || 0) + 1;
-          return realtimeEvents.slice(0, -1).concat(lastEvent);
-        } else {
-          return realtimeEvents.concat(realtimeEvent);
-        }
-      });
-    });
-    client.on('error', (event: any) => console.error(event));
-    client.on('conversation.interrupted', async () => {
-      const trackSampleOffset = await wavStreamPlayer.interrupt();
-      if (trackSampleOffset?.trackId) {
-        const { trackId, offset } = trackSampleOffset;
-        await client.cancelResponse(trackId, offset);
-      }
-    });
-    client.on('conversation.updated', async ({ item, delta }: any) => {
-      const items = client.conversation.getItems();
+    const client = clientRef.current
+    const wavStreamPlayer = wavStreamPlayerRef.current
+    if (!client || !sessionUUID) return
+  
+    console.log('[useEffect] 🏷 registering handlers')
+  
+    const onTranscript = async (evt: any) => {
+      if (evt.event.type !== 'conversation.item.input_audio_transcription.completed')
+        return
+      console.log('[onTranscript] transcript:', evt.event.transcript)
+      console.log('get context')
+      await injectContext(evt.event.transcript.trim())
+      console.log('context came')
+    }
+  
+    const onConvUpdate = async ({ item, delta }: any) => {
       if (delta?.audio) {
+        // ADD DELAY HERE BEFORE ADDING AUDIO
+        await new Promise((r) => setTimeout(r, 750)); // adjust to 1000ms if you want longer
+    
         wavStreamPlayer.add16BitPCM(delta.audio, item.id);
       }
+    
       if (item.status === 'completed' && item.formatted.audio?.length) {
-        const wavFile = await WavRecorder.decode(
-          item.formatted.audio,
-          24000,
-          24000,
-        );
-        item.formatted.file = wavFile;
+        WavRecorder.decode(item.formatted.audio, 24000, 24000).then((wav) => {
+          item.formatted.file = wav;
+        });
       }
-      setItems(items);
-    });
-
-    setItems(client.conversation.getItems());
-
-    return () => {
-      // cleanup; resets to defaults
-      client.reset();
+    
+      setItems(client.conversation.getItems());
     };
-  }, [clientRef.current]);
-
+    
+  
+    client.on('realtime.event', onTranscript)
+    client.on('conversation.updated', onConvUpdate)
+  
+    // seed the UI
+    setItems(client.conversation.getItems())
+  
+    return () => {
+      console.log('[useEffect] 🔥 tearing down handlers')
+      client.off('realtime.event', onTranscript)
+      client.off('conversation.updated', onConvUpdate)
+    }
+  }, [sessionUUID])
+  
+  
   /**
    * Render the application
    */
@@ -1077,5 +948,3 @@ export function ConsolePage() {
     </div>
   );
 }
-
-export default ConsolePage;
