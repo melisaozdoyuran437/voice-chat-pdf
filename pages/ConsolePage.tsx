@@ -8,6 +8,7 @@ import { WavRecorder, WavStreamPlayer } from '../lib/wavtools/index.js';
 import { WavRenderer } from '../utils/wav_renderer';
 import { Mic, MicOff, Video, VideoOff, PhoneOff } from 'react-feather';
 import { Button } from '../components/button/Button';
+import { instructions } from '../utils/conversation_config.js'
 
 /**
  * Type for all event logs
@@ -53,6 +54,7 @@ export default function ConsolePage({ companyName }: Props) {
               url: 'wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview',
               apiKey: apiKey,
               dangerouslyAllowAPIKeyInBrowser: true,
+              // debug: true,
             },
       );
     }
@@ -166,7 +168,7 @@ export default function ConsolePage({ companyName }: Props) {
       model: 'gpt-4o-mini-realtime-preview-2024-12-17',
       voice: 'alloy',
       modalities: ['text', 'audio'],
-      instructions: `You are a helpful, excited, fast-talking and warm voice assistant. Wait a full moment after the user finishes speaking before replying. Do not interrupt. Be expressive and natural.`,
+      instructions: `You are Revola's helpful, excited, fast-talking and warm voice assistant named Reva. Your job is to demo and answer questions about the company Revola AI's products. Be expressive and natural, adding laughter when appropriate.`,
       input_audio_format: 'pcm16',
       output_audio_format: 'pcm16',
       input_audio_noise_reduction: {
@@ -188,7 +190,7 @@ export default function ConsolePage({ companyName }: Props) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        company: companyName,    
+        company: "revola",    
         name: 'kyle',
         email: 'kylez56789@gmail.com'
       }),
@@ -349,6 +351,9 @@ export default function ConsolePage({ companyName }: Props) {
 
   const injectContext = async (transcript: string) => {
     const client = clientRef.current;
+    client.updateSession({
+      instructions: instructions
+    });
     if (!client || !sessionUUID) throw new Error("Session not ready");
   
     transcript = transcript.trim();
@@ -364,12 +369,12 @@ export default function ConsolePage({ companyName }: Props) {
 }
   
     // 2) Give the socket a moment to settle (optional, but avoids races)
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 100));
   
     // 3) Fetch your vector‑store answer from your FastAPI
     let data: { message: string; images: any[] };
     try {
-      const res = await fetch(`http://127.0.0.1:8000/query`, {
+      const res = await fetch(`http://127.0.0.1:8000/get-context`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uuid: sessionUUID, query: transcript }),
@@ -385,13 +390,11 @@ export default function ConsolePage({ companyName }: Props) {
     }
   
     // 4) Build one clear instruction + context string
-    const prompt = `Here’s the relevant documentation:
-  
-  ${data.message}
-  
-  Now answer the user’s question *only* based on that documentation.
-  
-  User’s question: → ${transcript}`;
+    const prompt = `
+    <user_query> ${transcript} <user_query>
+    <context>${data.message}<context>`;
+
+  console.log(prompt);
   
     // 5) Finally, send this single prompt
     client.sendUserMessageContent([
@@ -553,7 +556,7 @@ export default function ConsolePage({ companyName }: Props) {
     const onConvUpdate = async ({ item, delta }: any) => {
       if (delta?.audio) {
         // ADD DELAY HERE BEFORE ADDING AUDIO
-        await new Promise((r) => setTimeout(r, 750)); // adjust to 1000ms if you want longer
+        // await new Promise((r) => setTimeout(r, 1000)); // adjust to 1000ms if you want longer
     
         wavStreamPlayer.add16BitPCM(delta.audio, item.id);
       }
@@ -580,6 +583,28 @@ export default function ConsolePage({ companyName }: Props) {
       client.off('conversation.updated', onConvUpdate)
     }
   }, [sessionUUID])
+
+  useEffect(() => {
+    // Get refs
+    const wavStreamPlayer = wavStreamPlayerRef.current;
+    const client = clientRef.current;
+    if (!client) return;
+    client.updateSession({
+      instructions: instructions
+    });
+    client.on('error', (event: any) => console.error(event));
+    client.on('conversation.interrupted', async () => {
+      const trackSampleOffset = await wavStreamPlayer.interrupt();
+      if (trackSampleOffset?.trackId) {
+        const { trackId, offset } = trackSampleOffset;
+        await client.cancelResponse(trackId, offset);
+      }
+    });
+
+    return () => {
+      console.log("interrupted");
+    };
+  }, [clientRef.current]);
   
   
   /**
