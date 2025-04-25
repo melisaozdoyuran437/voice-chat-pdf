@@ -8,7 +8,8 @@ import { WavRecorder, WavStreamPlayer } from '../lib/wavtools/index.js';
 import { WavRenderer } from '../utils/wav_renderer';
 import { Mic, MicOff, Video, VideoOff, PhoneOff } from 'react-feather';
 import { Button } from '../components/button/Button';
-import { instructions } from '../utils/conversation_config.js'
+import { instructions } from '../constants/conversation_config.js'
+import { slides } from '../constants/demo_slides.js'
 
 /**
  * Type for all event logs
@@ -92,7 +93,6 @@ export default function ConsolePage({ companyName }: Props) {
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const recordedChunksRef = useRef<Blob[]>([]);
-  const [memoryKv, setMemoryKv] = useState<{ [key: string]: any }>({});
   const [showDefault, setShowDefault] = useState(true);
   const [textInput, setTextInput] = useState('');
   const [sessionUUID, setSessionUUID] = useState<string>(null);
@@ -103,6 +103,11 @@ export default function ConsolePage({ companyName }: Props) {
 
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
+
+  // Demo slides
+  const [isInDemoMode, setIsInDemoMode] = useState(false); // To control demo flow
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(-1); // Start before the first slide
+  const [isDemoFinished, setIsDemoFinished] = useState(false);
 
   // Set a timer to hide the default image after 15 seconds
   useEffect(() => {
@@ -168,7 +173,7 @@ export default function ConsolePage({ companyName }: Props) {
       model: 'gpt-4o-mini-realtime-preview-2024-12-17',
       voice: 'alloy',
       modalities: ['text', 'audio'],
-      instructions: `You are Revola's helpful, excited, fast-talking and warm voice assistant named Reva. Your job is to demo and answer questions about the company Revola AI's products. Be expressive and natural, adding laughter when appropriate.`,
+      instructions: instructions,
       input_audio_format: 'pcm16',
       output_audio_format: 'pcm16',
       input_audio_noise_reduction: {
@@ -181,7 +186,7 @@ export default function ConsolePage({ companyName }: Props) {
         type: 'semantic_vad',
         eagerness: 'low',
       },
-      temperature: 0.65,
+      temperature: 0.6,
       max_response_output_tokens: 1000,
     });
     console.log(client.sessionConfig);
@@ -221,6 +226,7 @@ export default function ConsolePage({ companyName }: Props) {
         text: intro,
       },
     ]);
+    client.createResponse();
 
     // Set state variables
     startTimeRef.current = new Date().toISOString();
@@ -246,7 +252,6 @@ export default function ConsolePage({ companyName }: Props) {
     setIsConnected(false);
     setRealtimeEvents([]);
     setItems([]);
-    setMemoryKv({});
 
     const client = clientRef.current;
     if (!client) throw new Error('RealtimeClient is not initialized');
@@ -366,7 +371,7 @@ export default function ConsolePage({ companyName }: Props) {
 
     if (lastAssistant) {
       client.cancelResponse(lastAssistant.id);
-}
+    }
   
     // 2) Give the socket a moment to settle (optional, but avoids races)
     await new Promise((r) => setTimeout(r, 100));
@@ -400,6 +405,7 @@ export default function ConsolePage({ companyName }: Props) {
     client.sendUserMessageContent([
       { type: "input_text", text: prompt },
     ]);
+    client.createResponse();
   };
   
   
@@ -556,7 +562,7 @@ export default function ConsolePage({ companyName }: Props) {
     const onConvUpdate = async ({ item, delta }: any) => {
       if (delta?.audio) {
         // ADD DELAY HERE BEFORE ADDING AUDIO
-        // await new Promise((r) => setTimeout(r, 1000)); // adjust to 1000ms if you want longer
+        await new Promise((r) => setTimeout(r, 750)); // adjust to 1000ms if you want longer
     
         wavStreamPlayer.add16BitPCM(delta.audio, item.id);
       }
@@ -573,6 +579,13 @@ export default function ConsolePage({ companyName }: Props) {
   
     client.on('realtime.event', onTranscript)
     client.on('conversation.updated', onConvUpdate)
+    client.on('conversation.interrupted', async () => {
+      const trackSampleOffset = await wavStreamPlayer.interrupt();
+      if (trackSampleOffset?.trackId) {
+        const { trackId, offset } = trackSampleOffset;
+        await client.cancelResponse(trackId, offset);
+      }
+    });
   
     // seed the UI
     setItems(client.conversation.getItems())
@@ -584,27 +597,28 @@ export default function ConsolePage({ companyName }: Props) {
     }
   }, [sessionUUID])
 
-  useEffect(() => {
-    // Get refs
-    const wavStreamPlayer = wavStreamPlayerRef.current;
-    const client = clientRef.current;
-    if (!client) return;
-    client.updateSession({
-      instructions: instructions
-    });
-    client.on('error', (event: any) => console.error(event));
-    client.on('conversation.interrupted', async () => {
-      const trackSampleOffset = await wavStreamPlayer.interrupt();
-      if (trackSampleOffset?.trackId) {
-        const { trackId, offset } = trackSampleOffset;
-        await client.cancelResponse(trackId, offset);
-      }
-    });
 
-    return () => {
-      console.log("interrupted");
-    };
-  }, [clientRef.current]);
+  useEffect(() => {
+    if (isInDemoMode && !isDemoFinished && wasAgentSpeakingRef.current && !isAgentSpeaking) {
+      console.log('Agent stopped speaking during demo. Advancing slide...');
+
+      // Add a small delay to prevent triggering on brief pauses
+      const timerId = setTimeout(() => {
+         // Double-check if the agent is still silent before advancing
+         if (!isAgentSpeaking) {
+            advanceSlide();
+         } else {
+            console.log("Agent started speaking again, cancelling slide advance.");
+         }
+      }, 1000); // Delay of 1 second (adjust as needed)
+
+      // Cleanup function to cancel the timeout if the component unmounts
+      // or if the agent starts speaking again before the timeout finishes
+      return () => clearTimeout(timerId);
+
+    }
+  }, [isAgentSpeaking])
+
   
   
   /**
