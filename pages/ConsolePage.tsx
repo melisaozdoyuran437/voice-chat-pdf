@@ -598,26 +598,26 @@ export default function ConsolePage({ companyName }: Props) {
   }, [sessionUUID])
 
 
-  useEffect(() => {
-    if (isInDemoMode && !isDemoFinished && wasAgentSpeakingRef.current && !isAgentSpeaking) {
-      console.log('Agent stopped speaking during demo. Advancing slide...');
+  // useEffect(() => {
+  //   if (isInDemoMode && !isDemoFinished && wasAgentSpeakingRef.current && !isAgentSpeaking) {
+  //     console.log('Agent stopped speaking during demo. Advancing slide...');
 
-      // Add a small delay to prevent triggering on brief pauses
-      const timerId = setTimeout(() => {
-         // Double-check if the agent is still silent before advancing
-         if (!isAgentSpeaking) {
-            advanceSlide();
-         } else {
-            console.log("Agent started speaking again, cancelling slide advance.");
-         }
-      }, 1000); // Delay of 1 second (adjust as needed)
+  //     // Add a small delay to prevent triggering on brief pauses
+  //     const timerId = setTimeout(() => {
+  //        // Double-check if the agent is still silent before advancing
+  //        if (!isAgentSpeaking) {
+  //           advanceSlide();
+  //        } else {
+  //           console.log("Agent started speaking again, cancelling slide advance.");
+  //        }
+  //     }, 1000); // Delay of 1 second (adjust as needed)
 
-      // Cleanup function to cancel the timeout if the component unmounts
-      // or if the agent starts speaking again before the timeout finishes
-      return () => clearTimeout(timerId);
+  //     // Cleanup function to cancel the timeout if the component unmounts
+  //     // or if the agent starts speaking again before the timeout finishes
+  //     return () => clearTimeout(timerId);
 
-    }
-  }, [isAgentSpeaking])
+  //   }
+  // }, [isAgentSpeaking])
 
   
   
