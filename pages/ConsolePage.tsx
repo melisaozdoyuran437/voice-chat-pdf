@@ -114,7 +114,13 @@ export default function ConsolePage({ companyName }: Props) {
 
   useEffect(() => { isInDemoModeRef.current = isInDemoMode; }, [isInDemoMode]);
   useEffect(() => { isDemoFinishedRef.current = isDemoFinished; }, [isDemoFinished]);
-  useEffect(() => { currentSlideIndexRef.current = currentSlideIndex; }, [currentSlideIndex]);
+  useEffect(() => { 
+    currentSlideIndexRef.current = currentSlideIndex; 
+    if (currentSlideIndex > slides.length) {
+      setIsDemoFinished(true);
+      setIsInDemoMode(false);
+    }
+  }, [currentSlideIndex]);
 
   // Ref to store the timeout ID for the delay
   const advanceSlideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -125,29 +131,21 @@ export default function ConsolePage({ companyName }: Props) {
   useEffect(() => {
     const client = clientRef.current;
     const currentTimeoutId = advanceSlideTimeoutRef.current;
-    // const slideIndexAtEffectStart = currentSlideIndexRef.current;
-
-    // console.log(`[Auto-Advance Effect Run] Index: ${slideIndexAtEffectStart}, isAgentSpeaking: ${isAgentSpeaking}, wasSpeaking: ${wasAgentSpeakingRef.current}, demoMode: ${isInDemoMode}, demoFinished: ${isDemoFinished}, existingTimerId: ${currentTimeoutId}, triggerSent: ${triggerSentRef.current}`);
-
-    // --- 1. Determine if conditions require clearing timer / resetting trigger flag ---
     // Clear if demo stopped OR agent started speaking again
     const shouldClearTimer = !isInDemoMode || isDemoFinished || isAgentSpeaking;
 
     if (shouldClearTimer) { // Clear timer AND reset the trigger flag
         if (currentTimeoutId) {
-            // console.log(`[Auto-Advance] Clearing existing timer ID ${currentTimeoutId} because conditions changed (speaking=${isAgentSpeaking}, demoMode=${isInDemoMode}, demoFinished=${isDemoFinished}).`);
             clearTimeout(currentTimeoutId);
             advanceSlideTimeoutRef.current = null;
         }
         // *** Reset the trigger flag whenever the agent speaks or demo ends ***
         if (triggerSentRef.current) {
-             // console.log("[Auto-Advance] Resetting triggerSentRef to false.");
              triggerSentRef.current = false;
         }
     }
 
-    // --- 2. Determine if conditions require starting a NEW timer ---
-    // Start if demo is active, agent JUST stopped, AND no timer is currently set
+    // Determine if conditions require starting a NEW timer ---
     const agentJustStopped = wasAgentSpeakingRef.current && !isAgentSpeaking;
     const shouldStartTimer =
         isInDemoMode &&
@@ -156,30 +154,17 @@ export default function ConsolePage({ companyName }: Props) {
         !advanceSlideTimeoutRef.current; // Check if ref is null (no timer active)
 
     if (shouldStartTimer) {
-        // console.log(`[Auto-Advance] Conditions met to START timer (5000ms) for slide index ${slideIndexAtEffectStart}.`);
-
         const newTimerId = setTimeout(() => {
-            // console.log(`[Auto-Advance Timeout Callback - Started ID: ${newTimerId}] Timer finished. Checking conditions...`);
-
             const stillInDemo = isInDemoModeRef.current;
             const stillNotFinished = !isDemoFinishedRef.current;
             const stillNotSpeaking = !isAgentSpeaking;
-
-            // console.log(`[Auto-Advance Timeout Callback - Started ID: ${newTimerId}] Conditions Check: stillInDemo=${stillInDemo}, stillNotFinished=${stillNotFinished}, stillNotSpeaking=${stillNotSpeaking}, triggerSent: ${triggerSentRef.current}`);
-
-            // *** Add check for triggerSentRef ***
             if (stillInDemo && stillNotFinished && stillNotSpeaking && !triggerSentRef.current) {
-                console.log(`[Auto-Advance Timeout Callback - Started ID: ${newTimerId}] Conditions still met AND trigger NOT sent. Triggering next slide.`);
                 if (client && client.isConnected()) {
                     client.sendUserMessageContent([{ type: "input_text", text: "Okay, please proceed to the next slide." }]);
-                    // client.createResponse();
-                    // *** Set the flag immediately after sending ***
                     triggerSentRef.current = true;
-                    console.log("[Auto-Advance Timeout Callback] Set triggerSentRef to true.");
                 }
             }
 
-            // Clear the timer ref *only if it still matches*
             if (advanceSlideTimeoutRef.current === newTimerId) {
                 advanceSlideTimeoutRef.current = null;
             }
@@ -189,14 +174,11 @@ export default function ConsolePage({ companyName }: Props) {
         advanceSlideTimeoutRef.current = newTimerId;
     }
 
-    // --- 3. Update the 'previous' state ref for the next run ---
+    // Update the 'previous' state ref for the next run ---
     wasAgentSpeakingRef.current = isAgentSpeaking;
 
-    // --- 4. Cleanup function ---
     return () => {
-        // console.log(`[Auto-Advance Effect Cleanup] Cleanup for effect run associated with initial timer ID: ${currentTimeoutId}`);
         if (currentTimeoutId) {
-            // console.log(`[Auto-Advance Effect Cleanup] Clearing timer ID ${currentTimeoutId}`);
             clearTimeout(currentTimeoutId);
         }
     };
@@ -342,7 +324,6 @@ export default function ConsolePage({ companyName }: Props) {
         text: intro,
       },
     ]);
-    // client.createResponse();
 
     // Set state variables
     startTimeRef.current = new Date().toISOString();
@@ -652,7 +633,6 @@ export default function ConsolePage({ companyName }: Props) {
         }
         let currentSlide = currentSlideIndexRef.current
         const nextIndex = currentSlide + 1;
-        console.log(nextIndex)
         if (nextIndex < slides.length) {
           // Update the persistent state to the new index
           setCurrentSlideIndex(nextIndex);
@@ -670,9 +650,8 @@ export default function ConsolePage({ companyName }: Props) {
           };
         } else {
           // Reached the end of the presentation
-          console.log("Tool: End of presentation reached.");
-          // Optionally reset index if you want the demo to loop or stop
-          // setCurrentSlideIndex(-1); // Reset for looping
+          setCurrentSlideIndex(nextIndex);
+          console.log("END OF PRESENTATION");
           setIsInDemoMode(false);
           setIsDemoFinished(true);
           return {
