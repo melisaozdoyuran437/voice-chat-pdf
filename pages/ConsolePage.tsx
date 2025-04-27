@@ -47,6 +47,31 @@ export default function ConsolePage({ companyName }: Props) {
   const startTimeRef = useRef<string>(new Date().toISOString());
 
   const [isEmailPopupOpen, setIsEmailPopupOpen] = useState(false);
+  
+  // Demo slides
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(-1); // Start before the first slide
+  const currentSlideIndexRef = useRef(currentSlideIndex);
+  const [isInDemoMode, setIsInDemoMode] = useState(false); // To control demo flow
+  const isInDemoModeRef = useRef(false);
+  const [isDemoFinished, setIsDemoFinished] = useState(false);
+  const isDemoFinishedRef = useRef(false);
+
+  useEffect(() => { isInDemoModeRef.current = isInDemoMode; }, [isInDemoMode]);
+  useEffect(() => { isDemoFinishedRef.current = isDemoFinished; }, [isDemoFinished]);
+  useEffect(() => { 
+    currentSlideIndexRef.current = currentSlideIndex; 
+    if (currentSlideIndex > slides.length) {
+      setIsDemoFinished(true);
+      setIsInDemoMode(false);
+    }
+  }, [currentSlideIndex]);
+  
+  // Ref to store the timeout ID for the delay
+  const advanceSlideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Ref to track the previous state of isAgentSpeaking
+  const wasAgentSpeakingRef = useRef(false);
+  const triggerSentRef = useRef(false);
+
 
   // Initialize API key from localStorage
   useEffect(() => {
@@ -77,7 +102,63 @@ export default function ConsolePage({ companyName }: Props) {
     }
   }, [apiKey]);
 
-  // Set a timer to hide the default image after 25 seconds
+  useEffect(() => {
+    const client = clientRef.current;
+    const currentTimeoutId = advanceSlideTimeoutRef.current;
+    // Clear if demo stopped OR agent started speaking again
+    const shouldClearTimer = !isInDemoMode || isDemoFinished || isAgentSpeaking;
+
+    if (shouldClearTimer) { // Clear timer AND reset the trigger flag
+        if (currentTimeoutId) {
+            clearTimeout(currentTimeoutId);
+            advanceSlideTimeoutRef.current = null;
+        }
+        // *** Reset the trigger flag whenever the agent speaks or demo ends ***
+        if (triggerSentRef.current) {
+             triggerSentRef.current = false;
+        }
+    }
+
+    // Determine if conditions require starting a NEW timer ---
+    const agentJustStopped = wasAgentSpeakingRef.current && !isAgentSpeaking;
+    const shouldStartTimer =
+        isInDemoMode &&
+        !isDemoFinished &&
+        agentJustStopped &&
+        !advanceSlideTimeoutRef.current; // Check if ref is null (no timer active)
+
+    if (shouldStartTimer) {
+        const newTimerId = setTimeout(() => {
+            const stillInDemo = isInDemoModeRef.current;
+            const stillNotFinished = !isDemoFinishedRef.current;
+            const stillNotSpeaking = !isAgentSpeaking;
+            if (stillInDemo && stillNotFinished && stillNotSpeaking && !triggerSentRef.current) {
+                if (client && client.isConnected()) {
+                    client.sendUserMessageContent([{ type: "input_text", text: "Okay, please proceed to the next slide." }]);
+                    triggerSentRef.current = true;
+                }
+            }
+
+            if (advanceSlideTimeoutRef.current === newTimerId) {
+                advanceSlideTimeoutRef.current = null;
+            }
+
+        }, 3500)
+
+        advanceSlideTimeoutRef.current = newTimerId;
+    }
+
+    // Update the 'previous' state ref for the next run ---
+    wasAgentSpeakingRef.current = isAgentSpeaking;
+
+    return () => {
+        if (currentTimeoutId) {
+            clearTimeout(currentTimeoutId);
+        }
+    };
+}, [isAgentSpeaking, isInDemoMode, isDemoFinished, clientRef]);
+
+  // Set a timer to hide the default image after 15 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowDefault(false);
@@ -127,8 +208,31 @@ export default function ConsolePage({ companyName }: Props) {
         type: 'semantic_vad',
         eagerness: 'low',
       },
+      tools: [
+        {
+          "type": "function",
+          "name": "get_demo_slide",
+          "description": "Retrieves the script for the next slide in the demo presentation sequence. Call this tool when you need to get the script for the slides when giving the demo.",
+          "parameters": {
+              "type": "object",
+              "properties": {},
+              "required": []
+          }
+        },
+        {
+          "type": "function",
+          "name": "get_context",
+          "description": "Retrieves context for company specific questions. Call this tool when the user has asked a company specific question and you do need more context to answer it.",
+          "parameters": {
+              "type": "object",
+              "properties": {
+                "query": {"type": "string"}
+              },
+              "required": ["query"]
+          }
+        },
+      ],
       temperature: 0.6,
-      max_response_output_tokens: 1000,
     });
 
     // Initialize session with backend
@@ -169,7 +273,6 @@ export default function ConsolePage({ companyName }: Props) {
         text: intro,
       },
     ]);
-    client.createResponse();
 
     // Set state variables
     startTimeRef.current = new Date().toISOString();
@@ -275,7 +378,6 @@ export default function ConsolePage({ companyName }: Props) {
         text: textInput,
       },
     ]);
-
     // Clear the text input field
     setTextInput('');
   };
@@ -373,8 +475,93 @@ export default function ConsolePage({ companyName }: Props) {
       setItems(client.conversation.getItems());
     };
     
-    client.on('realtime.event', onTranscript);
-    client.on('conversation.updated', onConvUpdate);
+    client.addTool({
+      name: 'get_demo_slide',
+      description: 'Retrieves the script for the next slide in the demo presentation sequence. Call this tool when you need to get the script for the slides when giving the demo.',
+      parameters: {
+        type: 'object',
+        properties: {}, // No parameters needed from the agent for this tool
+        required: [],
+      },
+    },
+      // The async function simulates fetching the next slide's script
+      async () => {
+        console.log("Called get_demo_slide tool");
+        if (currentSlideIndex == -1) {
+          setIsInDemoMode(true);
+        }
+        let currentSlide = currentSlideIndexRef.current
+        const nextIndex = currentSlide + 1;
+        if (nextIndex < slides.length) {
+          // Update the persistent state to the new index
+          setCurrentSlideIndex(nextIndex);
+    
+          // Get the script for the new current slide
+          const slide = slides[nextIndex];
+          const script = slide.script;
+          console.log(`Tool: Returning script for slide ${nextIndex + 1}: "${script.substring(0, 30)}..."`);
+    
+          // Return the script for the agent to say
+          return {
+            slideNumber: slide.slideNumber,
+            script: script,
+            end_of_presentation: false
+          };
+        } else {
+          // Reached the end of the presentation
+          setCurrentSlideIndex(nextIndex);
+          console.log("END OF PRESENTATION");
+          setIsInDemoMode(false);
+          setIsDemoFinished(true);
+          return {
+            script: "This concludes the presentation.",
+            end_of_presentation: true
+          };
+        }
+    });
+    client.addTool({
+      name: 'get_context',
+      description: 'Retrieves context for company specific questions. Call this tool when the user has asked a company specific question and you do need more context to answer it.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: "the user's question or query"
+          }
+        }, // No parameters needed from the agent for this tool
+        required: ['query'],
+      },
+    },
+      // The async function simulates fetching the next slide's script
+      async ({query}: { [key: string]: any}) => {
+        console.log("Using get-context tool");
+        let data: { message: string; images: any[] };
+        try {
+          const res = await fetch(`http://127.0.0.1:8000/get-context`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ uuid: sessionUUID, query: query}),
+          });
+          if (!res.ok) {
+            console.error("Backend error:", await res.text());
+            return;
+          }
+          data = await res.json();
+        } catch (err) {
+          console.error("Fetch failed:", err);
+          return;
+        }
+        console.log("Context Retreived")
+        return data.message;
+
+        // const prompt = `
+        // <user_query> ${query} <user_query>
+        // <context>${data.message}<context>`;
+        // return prompt;
+    });
+    client.on('realtime.event', onTranscript)
+    client.on('conversation.updated', onConvUpdate)
     client.on('conversation.interrupted', async () => {
       const trackSampleOffset = await wavStreamPlayer.interrupt();
       if (trackSampleOffset?.trackId) {
@@ -383,15 +570,15 @@ export default function ConsolePage({ companyName }: Props) {
       }
     });
   
-    // Seed the UI
-    setItems(client.conversation.getItems());
+    // seed the UI
+    setItems(client.conversation.getItems())
   
     return () => {
-      console.log('[useEffect] 🔥 tearing down handlers');
-      client.off('realtime.event', onTranscript);
-      client.off('conversation.updated', onConvUpdate);
-    };
-  }, [sessionUUID]);
+      console.log('[useEffect] 🔥 tearing down handlers')
+      client.off('realtime.event', onTranscript)
+      client.off('conversation.updated', onConvUpdate)
+    }
+  }, [sessionUUID])
 
   // Set up render loops for visualization canvas
   useEffect(() => {
@@ -533,7 +720,6 @@ export default function ConsolePage({ companyName }: Props) {
     }
     
     const connections: any[] = [];
-    
     const animate = () => {
       ctx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
       
@@ -594,7 +780,6 @@ export default function ConsolePage({ companyName }: Props) {
     }
     return agentEmotion;
   };
-
   return (
     <div
       data-component="ConsolePage"
