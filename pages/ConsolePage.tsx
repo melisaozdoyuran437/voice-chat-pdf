@@ -1,18 +1,14 @@
-const LOCAL_RELAY_SERVER_URL: string =
-  process.env.REACT_APP_LOCAL_RELAY_SERVER_URL || '';
-
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { RealtimeClient } from '@openai/realtime-api-beta';
 import { ItemType } from '@openai/realtime-api-beta/dist/lib/client.js';
 import { WavRecorder, WavStreamPlayer } from '../lib/wavtools/index.js';
-import { WavRenderer } from '../utils/wav_renderer';
-import { Mic, MicOff, Video, VideoOff, PhoneOff } from 'react-feather';
-import { Button } from '../components/button/Button';
-import { instructions } from '../constants/conversation_config.js'
-import { slides } from '../constants/demo_slides.js'
+import { instructions } from '../constants/conversation_config.js';
+import EmailSubscription from '../components/EmailSubscription';
+
+const LOCAL_RELAY_SERVER_URL: string = process.env.REACT_APP_LOCAL_RELAY_SERVER_URL || '';
 
 /**
- * Type for all event logs
+ * Type for event logs
  */
 interface RealtimeEvent {
   time: string;
@@ -29,81 +25,29 @@ export default function ConsolePage({ companyName }: Props) {
   const [apiKey, setApiKey] = useState<string>('');
   const clientRef = useRef<RealtimeClient | null>(null);
 
-  useEffect(() => {
-    // call localStorage operations inside useEffect to ensure they run only on the client side
-    const storedApiKey = localStorage.getItem('tmp::voice_api_key') || '';
-    setApiKey(storedApiKey);
-
-    if (!LOCAL_RELAY_SERVER_URL && !storedApiKey) {
-      const newApiKey = prompt('OpenAI API Key') || '';
-      if (newApiKey) {
-        localStorage.setItem('tmp::voice_api_key', newApiKey);
-        setApiKey(newApiKey);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    // Initialize RealtimeClient when apiKey is available
-    if (apiKey || LOCAL_RELAY_SERVER_URL) {
-      clientRef.current = new RealtimeClient(
-        LOCAL_RELAY_SERVER_URL
-          ? {
-              url: LOCAL_RELAY_SERVER_URL,
-            }
-          : {
-              url: 'wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview',
-              apiKey: apiKey,
-              dangerouslyAllowAPIKeyInBrowser: true,
-              // debug: true,
-            },
-      );
-    }
-  }, [apiKey]);
-
-  /**
-   * Instantiate:
-   * - WavRecorder (speech input)
-   * - WavStreamPlayer (speech output)
-   * - RealtimeClient (API client)
-   */
-  const wavRecorderRef = useRef<WavRecorder>(
-    new WavRecorder({ sampleRate: 24000 }),
-  );
-  const wavStreamPlayerRef = useRef<WavStreamPlayer>(
-    new WavStreamPlayer({ sampleRate: 24000 }),
-  );
-
-  /**
-   * References for
-   * - Rendering audio visualization (canvas)
-   * - Autoscrolling event logs
-   * - Timing delta for event log displays
-   * - Webcam recording
-   */
-  const clientCanvasRef = useRef<HTMLCanvasElement>(null);
-  const serverCanvasRef = useRef<HTMLCanvasElement>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const eventsScrollHeightRef = useRef(0);
-  const eventsScrollRef = useRef<HTMLDivElement>(null);
-  const startTimeRef = useRef<string>(new Date().toISOString());
-  const blackStreamRef = useRef<MediaStream | null>(null);
+  // States
   const [items, setItems] = useState<ItemType[]>([]);
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  const recordedChunksRef = useRef<Blob[]>([]);
-  const [showDefault, setShowDefault] = useState(true);
-  const [textInput, setTextInput] = useState('');
-  const [sessionUUID, setSessionUUID] = useState<string>(null);
+  const [sessionUUID, setSessionUUID] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-
-  const [isCameraOn, setIsCameraOn] = useState(false);
-  const [isVideoRecording, setIsVideoRecording] = useState(false);
-
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const [displayImage, setDisplayImage] = useState('/revola-agent-body.png');
+  const [showDefault, setShowDefault] = useState(true);
+  const [agentEmotion, setAgentEmotion] = useState('neutral');
+  const [showIntro, setShowIntro] = useState(true);
 
+  // References
+  const wavRecorderRef = useRef<WavRecorder>(new WavRecorder({ sampleRate: 24000 }));
+  const wavStreamPlayerRef = useRef<WavStreamPlayer>(new WavStreamPlayer({ sampleRate: 24000 }));
+  const clientCanvasRef = useRef<HTMLCanvasElement>(null);
+  const serverCanvasRef = useRef<HTMLCanvasElement>(null);
+  const startTimeRef = useRef<string>(new Date().toISOString());
+
+  const [isEmailPopupOpen, setIsEmailPopupOpen] = useState(false);
+  
   // Demo slides
   const [currentSlideIndex, setCurrentSlideIndex] = useState(-1); // Start before the first slide
   const currentSlideIndexRef = useRef(currentSlideIndex);
@@ -121,12 +65,42 @@ export default function ConsolePage({ companyName }: Props) {
       setIsInDemoMode(false);
     }
   }, [currentSlideIndex]);
-
+  
   // Ref to store the timeout ID for the delay
   const advanceSlideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Ref to track the previous state of isAgentSpeaking
   const wasAgentSpeakingRef = useRef(false);
   const triggerSentRef = useRef(false);
+
+
+  // Initialize API key from localStorage
+  useEffect(() => {
+    const storedApiKey = localStorage.getItem('tmp::voice_api_key') || '';
+    setApiKey(storedApiKey);
+
+    if (!LOCAL_RELAY_SERVER_URL && !storedApiKey) {
+      const newApiKey = prompt('OpenAI API Key') || '';
+      if (newApiKey) {
+        localStorage.setItem('tmp::voice_api_key', newApiKey);
+        setApiKey(newApiKey);
+      }
+    }
+  }, []);
+
+  // Initialize RealtimeClient when apiKey is available
+  useEffect(() => {
+    if (apiKey || LOCAL_RELAY_SERVER_URL) {
+      clientRef.current = new RealtimeClient(
+        LOCAL_RELAY_SERVER_URL
+          ? { url: LOCAL_RELAY_SERVER_URL }
+          : {
+              url: 'wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview',
+              apiKey: apiKey,
+              dangerouslyAllowAPIKeyInBrowser: true,
+            }
+      );
+    }
+  }, [apiKey]);
 
   useEffect(() => {
     const client = clientRef.current;
@@ -188,49 +162,22 @@ export default function ConsolePage({ companyName }: Props) {
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowDefault(false);
-    }, 25000);
+      setShowIntro(false);
+    }, 10000);
     return () => clearTimeout(timer);
   }, []);
 
-  // Now place the useEffect after the state declaration
+  // Check for assistant images in responses
   useEffect(() => {
     items.forEach((item) => {
       if (item.role === 'assistant' && (item as any).metadata?.image) {
-        console.log(
-          'Assistant response includes image URL:',
-          (item as any).metadata.image,
-        );
+        console.log('Assistant response includes image URL:', (item as any).metadata.image);
+        setDisplayImage((item as any).metadata.image);
       }
     });
   }, [items]);
 
-  useEffect(() => {
-    // Request microphone and video permissions on page load
-    const requestPermissions = async () => {
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-        console.log('Permissions granted');
-      } catch (error) {
-        console.error('Error requesting permissions:', error);
-      }
-    };
-    requestPermissions();
-    // Create a black stream and set it as the initial video source
-    createBlackStream();
-    if (videoRef.current && blackStreamRef.current) {
-      videoRef.current.srcObject = blackStreamRef.current;
-    }
-    return () => {
-      if (videoRef.current?.srcObject instanceof MediaStream) {
-        videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, []);
-
-  /**
-   * Connect to conversation:
-   * WavRecorder taks speech input, WavStreamPlayer output, client is API client
-   */
+  // Connect to conversation
   const connectConversation = useCallback(async () => {
     const client = clientRef.current;
     if (!client) throw new Error('RealtimeClient is not initialized');
@@ -287,8 +234,8 @@ export default function ConsolePage({ companyName }: Props) {
       ],
       temperature: 0.6,
     });
-    console.log(client.sessionConfig);
 
+    // Initialize session with backend
     const response = await fetch('http://127.0.0.1:8000/initialize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -298,11 +245,13 @@ export default function ConsolePage({ companyName }: Props) {
         email: 'kylez56789@gmail.com'
       }),
     });
+    
     if (!response.ok) {
       const err = await response.json();
       console.error('Init error:', err);
       return;
     }
+    
     const data = await response.json();
     console.log('API response:', data);
     setSessionUUID(data.uuid);
@@ -330,25 +279,34 @@ export default function ConsolePage({ companyName }: Props) {
     setIsConnected(true);
     setRealtimeEvents([]);
     setItems(client.conversation.getItems());
-    console.log('Connected to conversation');
-    console.log(isRecording);
-    console.log(client.isConnected());
-    if (client.isConnected()) {
-      if (isRecording) {
-        await wavRecorder.record((data) => client.appendInputAudio(data.mono));
-      }
-    } else {
-      console.error('RealtimeClient is not connected');
+    
+    if (client.isConnected() && isRecording) {
+      await wavRecorder.record((data) => client.appendInputAudio(data.mono));
     }
+    
+    // Simulate agent emotions for demo
+    const emotionInterval = setInterval(() => {
+      if (isAgentSpeaking) {
+        const emotions = ['neutral', 'happy', 'thinking', 'excited'];
+        const randomEmotion = emotions[Math.floor(Math.random() * emotions.length)];
+        setAgentEmotion(randomEmotion);
+      } else {
+        setAgentEmotion('neutral');
+      }
+    }, 3000);
+    
+    return () => clearInterval(emotionInterval);
   }, [isRecording]);
 
-  /**
-   * Disconnect and reset conversation state
-   */
+  // Disconnect and reset conversation state
   const disconnectConversation = useCallback(async () => {
     setIsConnected(false);
     setRealtimeEvents([]);
     setItems([]);
+    setDisplayImage('/revola-agent.png');
+    setShowDefault(true);
+    setShowIntro(true);
+    setAgentEmotion('neutral');
 
     const client = clientRef.current;
     if (!client) throw new Error('RealtimeClient is not initialized');
@@ -361,9 +319,7 @@ export default function ConsolePage({ companyName }: Props) {
     await wavStreamPlayer.interrupt();
   }, []);
 
-  /**
-   * Unmute Audio Input
-   */
+  // Start recording audio
   const startRecording = async () => {
     console.log('Starting recording');
     setIsRecording(true);
@@ -378,6 +334,7 @@ export default function ConsolePage({ companyName }: Props) {
     await wavRecorder.record((data) => client.appendInputAudio(data.mono));
   };
 
+  // Stop recording audio
   const stopRecording = async () => {
     console.log('Stopping recording');
     setIsRecording(false);
@@ -389,6 +346,7 @@ export default function ConsolePage({ companyName }: Props) {
     await wavRecorder.pause();
   };
 
+  // Toggle recording state
   const handleRecordingToggle = () => {
     if (isConnected) {
       if (isRecording) {
@@ -401,169 +359,12 @@ export default function ConsolePage({ companyName }: Props) {
     }
   };
 
-  const createBlackStream = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 640;
-    canvas.height = 480;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = 'black';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-    const stream = canvas.captureStream(30);
-    blackStreamRef.current = stream;
-  };
-
-  const toggleCamera = () => {
-    if (isCameraOn) {
-      if (videoRef.current?.srcObject instanceof MediaStream) {
-        videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = blackStreamRef.current;
-      }
-    } else {
-      const startWebcam = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-          });
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
-        } catch (error) {
-          console.error('Error accessing webcam:', error);
-        }
-      };
-      startWebcam();
-    }
-    setIsCameraOn(!isCameraOn);
-  };
-
-  interface MediaItem {
-    type?: 'video' | 'image';
-    path: string;
-    caption?: string;
-  }
-
-  const [contextResponse, setContextResponse] = useState<{
-    message: string;
-    images?: MediaItem[];
-  } | null>(null);
-  
-  
-  /**
-   * Auto-scroll the event logs
-   */
-  useEffect(() => {
-    if (eventsScrollRef.current) {
-      const eventsEl = eventsScrollRef.current;
-      const scrollHeight = eventsEl.scrollHeight;
-      // Only scroll if height has just changed
-      if (scrollHeight !== eventsScrollHeightRef.current) {
-        eventsEl.scrollTop = scrollHeight;
-        eventsScrollHeightRef.current = scrollHeight;
-      }
-    }
-  }, [realtimeEvents]);
-
-  /**
-   * Auto-scroll the conversation logs
-   */
-  useEffect(() => {
-    const conversationEls = [].slice.call(
-      document.body.querySelectorAll('[data-conversation-content]'),
-    );
-    for (const el of conversationEls) {
-      const conversationEl = el as HTMLDivElement;
-      conversationEl.scrollTop = conversationEl.scrollHeight;
-    }
-  }, [items]);
-
-  /**
-   * Set up render loops for the visualization canvas
-   */
-  useEffect(() => {
-    if (!isConnected) return;
-
-    let isLoaded = true;
-
-    const wavRecorder = wavRecorderRef.current;
-    const clientCanvas = clientCanvasRef.current;
-    let clientCtx: CanvasRenderingContext2D | null = null;
-
-    const wavStreamPlayer = wavStreamPlayerRef.current;
-    const serverCanvas = serverCanvasRef.current;
-    let serverCtx: CanvasRenderingContext2D | null = null;
-
-    const render = () => {
-      if (isLoaded) {
-        if (clientCanvas) {
-          if (!clientCanvas.width || !clientCanvas.height) {
-            clientCanvas.width = clientCanvas.offsetWidth;
-            clientCanvas.height = clientCanvas.offsetHeight;
-          }
-          clientCtx = clientCtx || clientCanvas.getContext('2d');
-          if (clientCtx) {
-            clientCtx.clearRect(0, 0, clientCanvas.width, clientCanvas.height);
-            const result = wavRecorder.recording
-              ? wavRecorder.getFrequencies('voice')
-              : { values: new Float32Array([0]) };
-            const maxAmplitude = Math.max(...Array.from(result.values));
-            setIsUserSpeaking(maxAmplitude > 0.4);
-            WavRenderer.drawBars(
-              clientCanvas,
-              clientCtx,
-              result.values,
-              'oklch(0.627 0.265 303.9)',
-              3,
-              0,
-              8,
-              true,
-            );
-          }
-        }
-        if (serverCanvas) {
-          if (!serverCanvas.width || !serverCanvas.height) {
-            serverCanvas.width = serverCanvas.offsetWidth;
-            serverCanvas.height = serverCanvas.offsetHeight;
-          }
-          serverCtx = serverCtx || serverCanvas.getContext('2d');
-          if (serverCtx) {
-            serverCtx.clearRect(0, 0, serverCanvas.width, serverCanvas.height);
-            const result = wavStreamPlayer.analyser
-              ? wavStreamPlayer.getFrequencies('voice')
-              : { values: new Float32Array([0]) };
-            const maxAmplitude = Math.max(...Array.from(result.values));
-            setIsAgentSpeaking(maxAmplitude > 0.3);
-            WavRenderer.drawBars(
-              serverCanvas,
-              serverCtx,
-              result.values,
-              'oklch(0.627 0.265 303.9)',
-              3,
-              0,
-              8,
-              true,
-            );
-          }
-        }
-        window.requestAnimationFrame(render);
-      }
-    };
-    render();
-
-    return () => {
-      isLoaded = false;
-    };
-  }, [isConnected]);
-
-  const handleTextInputChange = (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+  // Handle text input changes
+  const handleTextInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setTextInput(event.target.value);
   };
 
+  // Submit text input
   const handleTextInputSubmit = async () => {
     if (textInput.trim() === '' || !isConnected) return;
 
@@ -577,33 +378,91 @@ export default function ConsolePage({ companyName }: Props) {
         text: textInput,
       },
     ]);
-
     // Clear the text input field
     setTextInput('');
   };
 
-  /**
-   * Core RealtimeClient and audio capture setup
-   * Set all of our instructions, tools, events and more
-   */
-  useEffect(() => {
-    const client = clientRef.current
-    const wavStreamPlayer = wavStreamPlayerRef.current
-    if (!client || !sessionUUID) return
+  // Inject context from backend
+  const injectContext = async (transcript: string) => {
+    const client = clientRef.current;
+    if (!client || !sessionUUID) throw new Error("Session not ready");
   
-    console.log('[useEffect] 🏷 registering handlers')
+    transcript = transcript.trim();
+    if (!transcript) return;
+  
+    const items = client.conversation.getItems();
+    const lastAssistant = items
+      .filter((i) => i.role === "assistant")
+      .reverse()[0];
+
+    if (lastAssistant) {
+      client.cancelResponse(lastAssistant.id);
+    }
+  
+    // Give the socket a moment to settle
+    await new Promise((r) => setTimeout(r, 100));
+  
+    // Fetch vector-store answer from FastAPI
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/get-context`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uuid: sessionUUID, query: transcript }),
+      });
+      
+      if (!res.ok) {
+        console.error("Backend error:", await res.text());
+        return;
+      }
+      
+      const data = await res.json();
+      
+      // Build instruction + context string
+      const prompt = `
+      <user_query> ${transcript} <user_query>
+      <context>${data.message}<context>`;
+
+      console.log(prompt);
+    
+      // Send prompt
+      client.sendUserMessageContent([
+        { type: "input_text", text: prompt },
+      ]);
+      client.createResponse();
+      
+      // Update image if available
+      if (data.images && data.images.length > 0) {
+        const imagePath = typeof data.images[0] === 'string' 
+          ? data.images[0].replace(/^public/, '')
+          : data.images[0].path.replace(/^public/, '');
+        setDisplayImage(imagePath);
+        setShowDefault(false);
+      }
+      
+    } catch (err) {
+      console.error("Fetch failed:", err);
+    }
+  };
+
+  // Set up event handlers for RealtimeClient
+  useEffect(() => {
+    const client = clientRef.current;
+    const wavStreamPlayer = wavStreamPlayerRef.current;
+    if (!client || !sessionUUID) return;
+  
+    console.log('[useEffect] 🏷 registering handlers');
   
     const onTranscript = async (evt: any) => {
       if (evt.event.type !== 'conversation.item.input_audio_transcription.completed')
-        return
-      console.log('[onTranscript] transcript:', evt.event.transcript)
-      // console.log('get context')
-      // await injectContext(evt.event.transcript.trim())
-      // console.log('context came')
-    }
+        return;
+      console.log('[onTranscript] transcript:', evt.event.transcript);
+      await injectContext(evt.event.transcript.trim());
+    };
   
     const onConvUpdate = async ({ item, delta }: any) => {
-      if (delta?.audio) {    
+      if (delta?.audio) {
+        // Add delay before adding audio
+        await new Promise((r) => setTimeout(r, 750));
         wavStreamPlayer.add16BitPCM(delta.audio, item.id);
       }
     
@@ -721,371 +580,969 @@ export default function ConsolePage({ companyName }: Props) {
     }
   }, [sessionUUID])
 
-  
-  
-  /**
-   * Render the application
-   */
+  // Set up render loops for visualization canvas
+  useEffect(() => {
+    if (!isConnected) return;
+
+    let isLoaded = true;
+
+    const wavRecorder = wavRecorderRef.current;
+    const clientCanvas = clientCanvasRef.current;
+    let clientCtx: CanvasRenderingContext2D | null = null;
+
+    const wavStreamPlayer = wavStreamPlayerRef.current;
+    const serverCanvas = serverCanvasRef.current;
+    let serverCtx: CanvasRenderingContext2D | null = null;
+
+    const render = () => {
+      if (isLoaded) {
+        // User audio visualization - Modified to be more professional looking
+        if (clientCanvas) {
+          if (!clientCanvas.width || !clientCanvas.height) {
+            clientCanvas.width = clientCanvas.offsetWidth;
+            clientCanvas.height = clientCanvas.offsetHeight;
+          }
+          clientCtx = clientCtx || clientCanvas.getContext('2d');
+          if (clientCtx) {
+            clientCtx.clearRect(0, 0, clientCanvas.width, clientCanvas.height);
+            const result = wavRecorder.recording
+              ? wavRecorder.getFrequencies('voice')
+              : { values: new Float32Array([0]) };
+            const maxAmplitude = Math.max(...Array.from(result.values));
+            setIsUserSpeaking(maxAmplitude > 0.4);
+            
+            // Custom sleek visualization
+            const barWidth = 2;
+            const barSpacing = 1;
+            const barCount = Math.min(40, Math.floor(clientCanvas.width / (barWidth + barSpacing)));
+            const step = Math.ceil(result.values.length / barCount);
+            
+            clientCtx.fillStyle = 'rgba(183, 82, 255, 0.2)';
+            clientCtx.fillRect(0, 0, clientCanvas.width, clientCanvas.height);
+            
+            for (let i = 0; i < barCount; i++) {
+              const index = i * step;
+              const value = result.values[index] || 0;
+              const height = Math.max(2, value * clientCanvas.height * 0.7);
+              const x = i * (barWidth + barSpacing) + (clientCanvas.width - barCount * (barWidth + barSpacing)) / 2;
+              const y = (clientCanvas.height - height) / 2;
+              
+              const gradient = clientCtx.createLinearGradient(x, y, x, y + height);
+              gradient.addColorStop(0, 'rgba(183, 82, 255, 0.7)');
+              gradient.addColorStop(1, 'rgba(129, 77, 220, 0.9)');
+              
+              clientCtx.fillStyle = gradient;
+              clientCtx.fillRect(x, y, barWidth, height);
+            }
+            
+            // Add center line
+            clientCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            clientCtx.lineWidth = 1;
+            clientCtx.beginPath();
+            clientCtx.moveTo(0, clientCanvas.height / 2);
+            clientCtx.lineTo(clientCanvas.width, clientCanvas.height / 2);
+            clientCtx.stroke();
+          }
+        }
+        
+        // Agent audio visualization - Similar sleek style
+        if (serverCanvas) {
+          if (!serverCanvas.width || !serverCanvas.height) {
+            serverCanvas.width = serverCanvas.offsetWidth;
+            serverCanvas.height = serverCanvas.offsetHeight;
+          }
+          serverCtx = serverCtx || serverCanvas.getContext('2d');
+          if (serverCtx) {
+            serverCtx.clearRect(0, 0, serverCanvas.width, serverCanvas.height);
+            const result = wavStreamPlayer.analyser
+              ? wavStreamPlayer.getFrequencies('voice')
+              : { values: new Float32Array([0]) };
+            const maxAmplitude = Math.max(...Array.from(result.values));
+            setIsAgentSpeaking(maxAmplitude > 0.3);
+            
+            // Mini sleek visualization
+            const barWidth = 2;
+            const barSpacing = 1;
+            const barCount = Math.min(20, Math.floor(serverCanvas.width / (barWidth + barSpacing)));
+            const step = Math.ceil(result.values.length / barCount);
+            
+            for (let i = 0; i < barCount; i++) {
+              const index = i * step;
+              const value = result.values[index] || 0;
+              const height = Math.max(2, value * serverCanvas.height * 0.8);
+              const x = i * (barWidth + barSpacing) + (serverCanvas.width - barCount * (barWidth + barSpacing)) / 2;
+              const y = (serverCanvas.height - height) / 2;
+              
+              const gradient = serverCtx.createLinearGradient(x, y, x, y + height);
+              gradient.addColorStop(0, 'rgba(183, 82, 255, 0.7)');
+              gradient.addColorStop(1, 'rgba(129, 77, 220, 0.9)');
+              
+              serverCtx.fillStyle = gradient;
+              serverCtx.fillRect(x, y, barWidth, height);
+            }
+          }
+        }
+        window.requestAnimationFrame(render);
+      }
+    };
+    render();
+
+    return () => {
+      isLoaded = false;
+    };
+  }, [isConnected]);
+
+  // Animation frames for digital particles backdrop effect
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    const particleCanvas = document.getElementById('particle-canvas') as HTMLCanvasElement;
+    if (!particleCanvas) return;
+    
+    const ctx = particleCanvas.getContext('2d');
+    if (!ctx) return;
+    
+    particleCanvas.width = window.innerWidth;
+    particleCanvas.height = window.innerHeight;
+    
+    const particles: any[] = [];
+    const particleCount = 50;
+    
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        x: Math.random() * particleCanvas.width,
+        y: Math.random() * particleCanvas.height,
+        size: Math.random() * 2 + 1,
+        speedX: (Math.random() - 0.5) * 0.5,
+        speedY: (Math.random() - 0.5) * 0.5,
+        opacity: Math.random() * 0.5 + 0.2
+      });
+    }
+    
+    const connections: any[] = [];
+    const animate = () => {
+      ctx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+      
+      // Update and draw particles
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        
+        p.x += p.speedX;
+        p.y += p.speedY;
+        
+        if (p.x < 0 || p.x > particleCanvas.width) p.speedX *= -1;
+        if (p.y < 0 || p.y > particleCanvas.height) p.speedY *= -1;
+        
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(183, 82, 255, ${p.opacity})`;
+        ctx.fill();
+        
+        // Find connections
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dx = p.x - p2.x;
+          const dy = p.y - p2.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          if (distance < 100) {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.strokeStyle = `rgba(183, 82, 255, ${0.1 * (1 - distance/100)})`;
+            ctx.stroke();
+          }
+        }
+      }
+      
+      requestAnimationFrame(animate);
+    };
+    
+    animate();
+    
+    // Handle resize
+    const handleResize = () => {
+      particleCanvas.width = window.innerWidth;
+      particleCanvas.height = window.innerHeight;
+    };
+    
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isConnected]);
+
+  // Function to determine facial expression class
+  const getFacialExpressionClass = () => {
+    if (isAgentSpeaking) {
+      return 'agent-speaking';
+    }
+    return agentEmotion;
+  };
   return (
     <div
       data-component="ConsolePage"
       style={{
+        display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#171717',
+        backgroundColor: '#0B0B12',
+        backgroundImage: 'radial-gradient(circle at 30% 30%, #251f3a 0%, transparent 70%)',
         minHeight: '100vh',
-        overflowX: 'hidden',
-        overflowY: 'hidden',
+        overflow: 'hidden',
         margin: 0,
         padding: 0,
+        position: 'relative',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif',
       }}
     >
-      <img
-        src="icon.png"
-        alt="revolalogo"
+      {/* Subtle Particle Background */}
+      <canvas
+        id="particle-canvas"
         style={{
           position: 'absolute',
-          top: '10px',
-          right: '10px',
-          width: '50px',
-          height: '50px',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          zIndex: 0,
+          opacity: 0.5,
         }}
       />
-      {!isConnected ? (
-        <Button
-          label="Connect"
-          onClick={connectConversation}
+      
+      {/* Animated Gradient Background */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          background: 'linear-gradient(135deg, rgba(30, 30, 50, 0.5) 0%, rgba(10, 10, 20, 0.7) 100%)',
+          backgroundSize: '400% 400%',
+          zIndex: -1,
+          animation: 'gradient-shift 20s ease infinite',
+        }}
+      />
+  
+      {/* Logo - Simplified and More Professional */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '20px',
+          left: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          zIndex: 5,
+        }}
+      >
+        <img
+          src="icon.png"
+          alt="Revola"
           style={{
-            marginTop: '20px',
-            padding: '15px 30px',
-            borderRadius: '10px',
-            border: 'none',
-            backgroundColor: 'rgba(183, 82, 255, 0.9)',
-            color: '#ffffff',
-            cursor: 'pointer',
-            fontSize: '18px',
-            fontWeight: 'bold',
-            textTransform: 'uppercase',
-            transition: 'all 0.3s ease',
-            boxShadow: '0 0 25px rgba(183, 82, 255, 0.9)',
-            transform: 'perspective(1px) translateZ(0)',
-            animation: 'pulse 2s infinite',
+            width: '36px',
+            height: '36px',
+            filter: 'drop-shadow(0 0 8px rgba(183, 82, 255, 0.4))',
           }}
         />
-      ) : (
-        <>
+        <span style={{color: '#ffffff', fontSize: '20px', fontWeight: '700',}}>revola</span>
+       
+      </div>
+     
+          
+      {/* Connect Button or Main Content */}
+      {!isConnected ? (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '36px',
+            position: 'relative',
+            zIndex: 1,
+            maxWidth: '800px',
+            textAlign: 'center',
+            padding: '0 24px',
+          }}
+        >
+          {/* Revola Agent Preview - Modernized */}
+          <div
+            style={{
+              width: '200px',
+              height: '200px',
+              borderRadius: '50%',
+              overflow: 'hidden',
+              border: '2px solid rgba(183, 82, 255, 0.4)',
+              boxShadow: '0 0 40px rgba(183, 82, 255, 0.2)',
+              position: 'relative',
+              marginTop: '40px',
+            }}
+          >
+            <img
+              src="/revola-agent.png"
+              alt="Reva"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '0',
+                left: '0',
+                right: '0',
+                height: '40%',
+                background: 'linear-gradient(to top, rgba(11, 11, 18, 0.7), transparent)',
+              }}
+            />
+          </div>
+          
+          <div>
+            <h1
+              style={{
+                fontSize: '2.5rem',
+                fontWeight: '700',
+                color: '#ffffff',
+                marginBottom: '16px',
+              }}
+            >
+              Meet Reva
+            </h1>
+            <p
+              style={{
+                color: '#B0B0C0',
+                lineHeight: '1.7',
+                marginBottom: '24px',
+                fontSize: '17px',
+                maxWidth: '600px',
+              }}
+            >
+              Your AI sales assistant that combines voice technology with visual demonstrations
+              to showcase products effectively. Engage customers with natural conversation and
+              interactive product presentations.
+            </p>
+          </div>
+          
+          <button
+            onClick={connectConversation}
+            style={{
+              padding: '16px 40px',
+              borderRadius: '12px',
+              border: 'none',
+              background: 'linear-gradient(135deg, #B752FF, #8349FF)',
+              color: '#ffffff',
+              cursor: 'pointer',
+              fontSize: '17px',
+              fontWeight: '600',
+              letterSpacing: '0.5px',
+              transition: 'all 0.3s ease',
+              boxShadow: '0 8px 20px rgba(183, 82, 255, 0.3)',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            Start Demo
+          </button>
+          
+          {/* Key Features - Simplified and Cleaner */}
           <div
             style={{
               display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: '#171717',
-              gap: '20px',
+              justifyContent: 'center',
+              gap: '40px',
+              marginTop: '10px',
+              flexWrap: 'wrap',
             }}
           >
-            {/* Context Media */}
+            {[
+              { icon: "🎤", label: "Voice Enabled" },
+              { icon: "💡", label: "Smart Responses" },
+              { icon: "⚙️", label: "Customizable" }
+            ].map((item, index) => (
+              <div
+                key={index}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(183, 82, 255, 0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <span style={{ fontSize: '16px' }}>{item.icon}</span>
+                </div>
+                <span style={{ color: '#B0B0C0', fontSize: '15px' }}>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        // Main Layout when connected
+        <>
+         <EmailSubscription />
+       
+        <div style={{ 
+          width: '94%',
+          maxWidth: '1400px', 
+          height: '88vh', 
+          display: 'flex', 
+          position: 'relative',
+          zIndex: 1, 
+          marginTop: '70px',
+          opacity: 1, 
+        }}>
+          
+          {/* Main Display Area (Product Demo) */}
+          <div
+            style={{
+              flex: '1',
+              backgroundColor: 'rgba(16, 16, 24, 0.65)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              borderRadius: '20px',
+              marginRight: '24px',
+              padding: '24px',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
+              border: isAgentSpeaking 
+                ? '1px solid rgba(183, 82, 255, 0.4)' 
+                : '1px solid rgba(255, 255, 255, 0.08)',
+              transition: 'all 0.3s ease',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Subtle grid background */}
             <div
-              className="context-media"
               style={{
+                position: 'absolute',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                backgroundImage: 'linear-gradient(rgba(183, 82, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(183, 82, 255, 0.03) 1px, transparent 1px)',
+                backgroundSize: '24px 24px',
+                pointerEvents: 'none',
+                opacity: 0.2,
+                zIndex: 1,
+              }}
+            />
+  
+            {/* Demo Content Header */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 marginBottom: '20px',
-                justifyContent: 'center',
+                position: 'relative',
+                zIndex: 2,
+              }}
+            >
+             
+              
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '6px 12px',
+                  borderRadius: '20px',
+                  backgroundColor: 'rgba(16, 16, 24, 0.6)',
+                  border: '1px solid rgba(183, 82, 255, 0.2)',
+                }}
+              >
+                <div
+                  style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: isConnected ? '#50e3c2' : '#ff4d4d',
+                    boxShadow: isConnected ? '0 0 8px rgba(80, 227, 194, 0.5)' : 'none',
+                  }}
+                />
+                <span style={{ color: '#B0B0C0', fontSize: '13px' }}>
+                  {isConnected ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+            </div>
+  
+            {/* Main Demo Content Display */}
+      
+          <div
+            style={{
+              flex: 1,
+              height: 'calc(100% - 60px)',
+              position: 'relative',
+              zIndex: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '18px',
+              overflow: 'hidden',
+              backgroundColor: 'rgba(11, 11, 18, 0.4)',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+            
+            }}
+          >
+            <img 
+              src="/default.png" 
+              alt="Welcome to Revola Demo" 
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '100%', 
+                objectFit: 'contain', 
+                opacity: 0.95 ,
+                borderRadius: '18px',
+              }} 
+            />
+          </div>
+
+          </div>
+  
+          {/* Agent Interaction Panel */}
+          <div
+            style={{
+              width: '320px',
+              backgroundColor: 'rgba(16, 16, 24, 0.65)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              borderRadius: '20px',
+              padding: '24px',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {/* Agent Header */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                marginBottom: '24px',
+                gap: '12px',
+              }}
+            >
+              
+              <h2
+                style={{
+                  fontSize: '1.4rem',
+                  fontWeight: '600',
+                  color: '#ffffff',
+                  margin: 0,
+                }}
+              >
+                Reva
+              </h2>
+            </div>
+            
+            {/* Agent Avatar centered vertically */}
+            <div
+              style={{
+                position: 'relative',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
+                justifyContent: 'center',
+                flex: 1,
+                marginBottom: '20px',
               }}
             >
-              <h2
-                style={{
-                  fontSize: '30px',
-                  fontWeight: 'bold',
-                  marginLeft: '200px',
-                  color: ' #f1f3f4',
-                }}
-              >
-                Revola AI's Screen
-              </h2>
-              {showDefault ||
-              !(
-                contextResponse &&
-                contextResponse.images &&
-                contextResponse.images.length > 0
-              ) ? ( 
-                  <div className="assistant-image">
-                  <img
-                    src={isInDemoMode ? slides[currentSlideIndex]?.imagePath || '/images/default.png': '/images/default.png'}
-                    alt="Default"
-                    style={{
-                      maxWidth: '1000px',
-                      maxHeight: '700px',
-                      borderRadius: '20px',
-                      marginLeft: '200px',
-                      boxShadow: '0 0 20px rgba(149, 76, 252, 0.6)',
-                    }}
-                  />
-                </div>
-              ) : (
-                (() => {
-                  const media = contextResponse.images[0] as MediaItem | string;
-                  if (typeof media === 'string') {
-                    if (media.includes('/videos/')) {
-                      return (
-                        <div className="assistant-video">
-                          <video
-                            autoPlay
-                            muted
-                            controls
-                            style={{
-                              maxWidth: '1000px',
-                              maxHeight: '700px',
-                              border: '1px solid #000',
-                              borderRadius: '10px',
-                              marginLeft: '150px',
-                            }}
-                          >
-                            <source
-                              src={media.replace(/^public/, '')}
-                              type="video/mp4"
-                            />
-                            Your browser does not support the video tag.
-                          </video>
-                        </div>
-                      );
-                    } else {
-                      return (
-                        <div className="assistant-image">
-                          <img
-                            src={media.replace(/^public/, '')}
-                            alt="Context related to answer"
-                            style={{
-                              maxWidth: '1000px',
-                              maxHeight: '700px',
-                              marginLeft: '150px',
-                              border: '1px solid #000',
-                              borderRadius: '10px',
-                            }}
-                          />
-                        </div>
-                      );
-                    }
-                  } else if (typeof media === 'object' && media.path) {
-                    if (media.type === 'video') {
-                      return (
-                        <div className="assistant-video">
-                          <video
-                            autoPlay
-                            muted
-                            controls
-                            style={{ maxWidth: '200px', marginLeft: '150px' }}
-                          >
-                            <source
-                              src={media.path.replace(/^public/, '')}
-                              type="video/mp4"
-                            />
-                            Your browser does not support the video tag.
-                          </video>
-                          {media.caption && (
-                            <div style={{ fontSize: '15px', color: '#666' }}>
-                              {media.caption}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    } else {
-                      return (
-                        <div className="assistant-image">
-                          <img
-                            src={media.path.replace(/^public/, '')}
-                            alt="Context related to answer"
-                            style={{ maxWidth: '500px', marginLeft: '150px' }}
-                          />
-                          {media.caption && (
-                            <div style={{ fontSize: '12px', color: '#666' }}>
-                              {media.caption}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    }
-                  }
-                  return null;
-                })()
-              )}
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                marginLeft: '20px',
-                gap: '10px',
-              }}
-            >
-              {/* User Webcam View */}
+              {/* Agent Image with Improved Mouth Animation */}
+              
               <div
-                className="user-webcam"
                 style={{
+                  width: '240px',
+                  height: '240px',
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  border: '2px solid rgba(183, 82, 255, 0.4)',
+                  boxShadow: isAgentSpeaking ? '0 0 40px rgba(183, 82, 255, 0.2)' : '0 0 20px rgba(183, 82, 255, 0.1)',
                   position: 'relative',
-                  textAlign: 'center',
-                  marginRight: '200px',
                 }}
               >
-                <h2
-                  className="text-center text-lg font-semibold mb-2 text-gray-100"
-                  style={{ color: '#ffffff' }}
-                >
-                  You
-                </h2>
-                <div className="webcam-view">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    style={{
-                      width: '100%',
-                      maxWidth: '300px',
-                      height: '200px',
-                      backgroundColor: 'black',
-                      boxShadow: isUserSpeaking
-                        ? '0 0 10px 3px oklch(0.627 0.265 303.9)'
-                        : 'none',
-                      border: '3px solid #000',
-                      borderRadius: '20px',
-                    }}
-                  />
-                  <canvas
-                    ref={clientCanvasRef}
-                    style={{
-                      width: '30px',
-                      height: '30px',
-                      position: 'absolute',
-                      top: '60px',
-                      right: '10px',
-                      borderRadius: '100%',
-                      overflow: 'hidden',
-                      border: isUserSpeaking
-                        ? '3px solid oklch(0.627 0.265 303.9)'
-                        : 'none',
-                    }}
-                  />
-                </div>
-              </div>
-              <div
-                className="user-webcam"
-                style={{
-                  position: 'relative',
-                  textAlign: 'center',
-                  marginRight: '200px',
-                }}
+                <img
+                  src="/revola-agent.png"
+                  alt="Reva"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                  }}
+                />
+  
+                <div
+                
               >
-                <h2
-                  className="text-center text-lg font-semibold mb-2"
-                  style={{ color: '#ffffff' }}
-                >
-                  Revola AI
-                </h2>
-                <div className="webcam-view">
-                  <div
-                    style={{
-                      width: '300px',
-                      height: '200px',
-                      backgroundColor: 'black',
-                      boxShadow: isAgentSpeaking
-                        ? '0 0 10px 3px oklch(0.627 0.265 303.9)'
-                        : 'none',
-                      border: '3px solid #000',
-                      borderRadius: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
+                <div
+                 
+                
                   >
-                    <img
-                      src="icon.png"
-                      alt="Revola Logo"
-                      style={{
-                        width: '100px',
-                        height: '100px',
-                      }}
-                    />
                     <canvas
                       ref={serverCanvasRef}
                       style={{
-                        width: '30px',
-                        height: '30px',
-                        position: 'absolute',
-                        top: '60px',
-                        right: '10px',
-                        borderRadius: '100%',
-                        overflow: 'hidden',
-                        border: isAgentSpeaking
-                          ? '3px solid oklch(0.627 0.265 303.9)'
-                          : 'none',
+                        width: '80px',
+                        height: '20px',
+                        borderRadius: '4px',
                       }}
                     />
+                    <span 
+                      style={{
+                        color: isAgentSpeaking ? '#ffffff' : '#B0B0C0', 
+                        fontSize: '13px',
+                        fontWeight: isAgentSpeaking ? '500' : '400',
+                      }}
+                    >
+                    </span>
                   </div>
                 </div>
+
+                {/* MOUTH DIV - With Animation */}
                 <div
                   style={{
-                    marginTop: '20px',
+                    position: 'absolute',
+                    bottom: '46%', // adjust this visually
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: isAgentSpeaking ? '30px' : '36px',
+                    height: isAgentSpeaking ? '10px' : '8px',
+                    backgroundColor: '#000000',
+                    borderStyle: "solid",
+                    borderWidth: "0 0 4px 0",    // only bottom border
+                    borderColor: "transparent transparent #000 transparent",
+                    borderBottomLeftRadius: 18,  // half the width
+                    borderBottomRightRadius: 18,
+                    animation: isAgentSpeaking ? 'talkingMouth 0.8s infinite ease-in-out' : 'none',
+                    zIndex: 3,
+                  }}
+                />
+
+                
+                {/* Gradient overlay */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '0',
+                    left: '0',
+                    width: '100%',
+                    height: '30%',
+                    background: 'linear-gradient(to top, rgba(11, 11, 18, 0.7), transparent)',
+                    zIndex: 1,
+                  }}
+                />
+              </div>
+              <div
+                style={{
+                  position: 'relative',
+                  marginTop: '20px',
+                  animation: 'fadeSlideUp 1s ease forwards',
+                }}
+              >
+                {/* Speech Bubble */}
+                <div
+                  style={{
+                    backgroundColor: 'rgba(81, 47, 101, 0.9)',
+                    padding: '12px 20px',
+                    borderRadius: '20px',
+                    color: '#ffffff',
+                    fontSize: '16px',
+                    fontWeight: '500',
+                    maxWidth: '240px',
                     textAlign: 'center',
-                    display: 'flex',
-                    gap: '10px',
-                    justifyContent: 'center',
-                    flexDirection: 'row',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+                    position: 'relative',
                   }}
                 >
-                  <input
-                    type="text"
-                    value={textInput}
-                    onChange={handleTextInputChange}
-                    placeholder="Type your message here"
-                    style={{
-                      width: '80%',
-                      padding: '10px',
-                      borderRadius: '5px',
-                      border: '1px solid #ccc',
-                      backgroundColor: 'rgba(34, 34, 34, 0.81)',
-                      color: 'rgb(255, 255, 255)',
-                    }}
-                  />
+                  Ask me anything!
 
-                  <button
-                    onClick={handleTextInputSubmit}
-                    style={{
-                      padding: '10px 20px',
-                      borderRadius: '5px',
-                      border: 'none',
-                      backgroundColor: 'oklch(0.627 0.265 303.9)',
-                      color: '#ffffff',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Send
-                  </button>
+                  {/* Bubble Tail */}
+                  <div
+                      style={{
+                        position: 'absolute',
+                        top: '-8px', // Move it slightly above the speech bubble
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: 0,
+                        height: 0,
+                        borderLeft: '8px solid transparent',
+                        borderRight: '8px solid transparent',
+                        borderBottom: '8px solid rgba(81, 47, 101, 0.9)', // Now borderBottom, not borderTop
+                      }}
+                    />
+
                 </div>
               </div>
             </div>
+            
+            {/* Bottom Controls */}
+          <div
+            style={{
+              marginTop: 'auto',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              width: '100%',
+            }}
+          >
+            {/* User Speaking Indicator */}
+            <div
+              style={{
+                display: 'flex' ,
+                alignItems: 'center',
+                gap: '12px',
+                backgroundColor: 'rgba(28, 17, 35, 0.7)',
+                padding: '8px 16px',
+                borderRadius: '24px',
+                border: isUserSpeaking 
+                  ? '1px solid rgba(0, 162, 255, 0.5)' 
+                  : '1px solid rgba(255, 255, 255, 0.08)',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+              }}
+            >
+              <canvas
+                ref={clientCanvasRef}
+                style={{
+                  width: '80px',
+                  height: '40px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: '6px',
+                  opacity: isUserSpeaking ? 1 : 0.4,
+                }}
+              />
+              <span 
+                style={{
+                  color: isUserSpeaking ? '#ffffff' : '#B0B0C0',
+                  fontSize: '13px',
+                  fontWeight: isUserSpeaking ? '600' : '400',
+                }}
+              >
+              </span>
+            </div>
+
+            {/* Control Buttons */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '12px',
+              }}
+            >
+              {/* Mute/Unmute Button */}
+              <button
+                onClick={handleRecordingToggle}
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '50%',
+                  backgroundColor: isRecording ? 'rgba(248, 207, 207, 0.95)' : 'rgba(183, 82, 255, 0.15)',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: isRecording ? '#ff4d4d' : '#B752FF',
+                }}
+              >
+                {isRecording ? (
+                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                 <path d="M12 1C11.2044 1 10.4413 1.31607 9.87868 1.87868C9.31607 2.44129 9 3.20435 9 4V12C9 12.7956 9.31607 13.5587 9.87868 14.1213C10.4413 14.6839 11.2044 15 12 15C12.7956 15 13.5587 14.6839 14.1213 14.1213C14.6839 13.5587 15 12.7956 15 12V4C15 3.20435 14.6839 2.44129 14.1213 1.87868C13.5587 1.31607 12.7956 1 12 1Z" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                 <path d="M19 10V12C19 13.8565 18.2625 15.637 16.9497 16.9497C15.637 18.2625 13.8565 19 12 19C10.1435 19 8.36301 18.2625 7.05025 16.9497C5.7375 15.637 5 13.8565 5 12V10" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                 <path d="M12 19V23" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                 <path d="M8 23H16" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+               </svg>
+                ) : (
+                  
+                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                   <path d="M12 1C11.2044 1 10.4413 1.31607 9.87868 1.87868C9.31607 2.44129 9 3.20435 9 4V12C9 12.7956 9.31607 13.5587 9.87868 14.1213C10.4413 14.6839 11.2044 15 12 15C12.7956 15 13.5587 14.6839 14.1213 14.1213C14.6839 13.5587 15 12.7956 15 12V4C15 3.20435 14.6839 2.44129 14.1213 1.87868C13.5587 1.31607 12.7956 1 12 1Z" stroke="#ff4d4d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                   <path d="M19 10V12C19 13.8565 18.2625 15.637 16.9497 16.9497C15.637 18.2625 13.8565 19 12 19C10.1435 19 8.36301 18.2625 7.05025 16.9497C5.7375 15.637 5 13.8565 5 12V10" stroke="#ff4d4d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                   <path d="M12 19V23" stroke="#ff4d4d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                   <path d="M8 23H16" stroke="#ff4d4d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                   <line x1="1" y1="1" x2="23" y2="23" stroke="#ff4d4d" strokeWidth="2" strokeLinecap="round"/>
+                 </svg>
+                )}
+              </button>
+
+              {/* End Session Button */}
+              <button
+                onClick={disconnectConversation}
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgb(222, 60, 60)',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: '#000000',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M6 6L18 18" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginTop: '24px', 
+              gap: '8px',
+            }}
+          >
+
+            {/* Powered By Text */}
+            <span
+              style={{
+                color: '#ffffff',
+                opacity: 0.8,
+                fontSize: '13px',
+                textAlign: 'center',
+              }}
+            >
+              Powered by Revola AI
+            </span>
+
+            {/* Logo Image */}
+            <img
+              src="/icon.png"
+              alt="Revola Logo"
+              style={{
+                width: '20px',
+                height: '20px',
+                objectFit: 'contain',
+                opacity: 0.85,
+              }}
+            />
           </div>
 
-          {/* Text Input for User */}
-          {/* Controls: Toggle and Disconnect */}
-          <div className="controls" style={{ display: 'flex', gap: '10px' }}>
-            <Button
-              icon={isRecording ? Mic : MicOff}
-              onClick={handleRecordingToggle}
-            />
-            <Button
-              icon={isCameraOn ? Video : VideoOff}
-              onClick={toggleCamera}
-            />
-            <Button
-              style={{ backgroundColor: '#d65656' }}
-              icon={PhoneOff}
-              onClick={disconnectConversation}
-            />
           </div>
+        </div>
         </>
       )}
+      
+      {/* Global CSS for animations - Refined */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.7; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.7; }
+          }
+          
+          @keyframes gradient-shift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+          }
+
+          
+          @keyframes fadeSlideUp {
+            0% {
+              opacity: 0;
+              transform: translateY(10px);
+            }
+            100% {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          
+
+
+          
+          
+          /* Fixed mouth animation */
+            @keyframes talkingMouth {
+        0% {
+          transform: translateX(-50%) scaleY(1) scaleX(1);
+        }
+        25% {
+          transform: translateX(-50%) scaleY(1.3) scaleX(1);
+        }
+        50% {
+          transform: translateX(-50%) scaleY(0.9) scaleX(1);
+        }
+        75% {
+          transform: translateX(-50%) scaleY(1.2) scaleX(1);
+        }
+        100% {
+          transform: translateX(-50%) scaleY(1) scaleX(1);
+        }
+      }
+        
+      
+          
+          @keyframes scanDown {
+            0% { top: 0; opacity: 0.7; }
+            45% { opacity: 0.4; }
+            50% { top: 100%; opacity: 0.1; }
+            50.1% { top: 0; opacity: 0; }
+            100% { top: 0; opacity: 0.7; }
+          }
+          
+          * {
+            box-sizing: border-box;
+          }
+          
+          body {
+            margin: 0;
+            padding: 0;
+          }
+          
+          ::-webkit-scrollbar {
+            width: 6px;
+          }
+          
+          ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+          }
+          
+          ::-webkit-scrollbar-thumb {
+            background: rgba(183, 82, 255, 0.3);
+            border-radius: 10px;
+          }
+          
+          ::-webkit-scrollbar-thumb:hover {
+            background: rgba(183, 82, 255, 0.5);
+          }
+  
+          input::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+          }
+  
+          button, input {
+            font-family: inherit;
+          }
+          
+          /* Fade in animation for connected view */
+          @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          
+          [data-component="ConsolePage"] > div:last-child {
+            animation: fadeIn 0.6s ease-out;
+          }
+        `
+      }} />
     </div>
-  );
-}
+  )};
