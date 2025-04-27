@@ -383,68 +383,6 @@ export default function ConsolePage({ companyName }: Props) {
     setTextInput('');
   };
 
-  // Inject context from backend
-  const injectContext = async (transcript: string) => {
-    const client = clientRef.current;
-    if (!client || !sessionUUID) throw new Error("Session not ready");
-  
-    transcript = transcript.trim();
-    if (!transcript) return;
-  
-    const items = client.conversation.getItems();
-    const lastAssistant = items
-      .filter((i) => i.role === "assistant")
-      .reverse()[0];
-
-    if (lastAssistant) {
-      client.cancelResponse(lastAssistant.id);
-    }
-  
-    // Give the socket a moment to settle
-    await new Promise((r) => setTimeout(r, 100));
-  
-    // Fetch vector-store answer from FastAPI
-    try {
-      const res = await fetch(`http://127.0.0.1:8000/get-context`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uuid: sessionUUID, query: transcript }),
-      });
-      
-      if (!res.ok) {
-        console.error("Backend error:", await res.text());
-        return;
-      }
-      
-      const data = await res.json();
-      
-      // Build instruction + context string
-      const prompt = `
-      <user_query> ${transcript} <user_query>
-      <context>${data.message}<context>`;
-
-      console.log(prompt);
-    
-      // Send prompt
-      client.sendUserMessageContent([
-        { type: "input_text", text: prompt },
-      ]);
-      client.createResponse();
-      
-      // Update image if available
-      if (data.images && data.images.length > 0) {
-        const imagePath = typeof data.images[0] === 'string' 
-          ? data.images[0].replace(/^public/, '')
-          : data.images[0].path.replace(/^public/, '');
-        setDisplayImage(imagePath);
-        setShowDefault(false);
-      }
-      
-    } catch (err) {
-      console.error("Fetch failed:", err);
-    }
-  };
-
   // Set up event handlers for RealtimeClient
   useEffect(() => {
     const client = clientRef.current;
@@ -457,7 +395,6 @@ export default function ConsolePage({ companyName }: Props) {
       if (evt.event.type !== 'conversation.item.input_audio_transcription.completed')
         return;
       console.log('[onTranscript] transcript:', evt.event.transcript);
-      await injectContext(evt.event.transcript.trim());
     };
   
     const onConvUpdate = async ({ item, delta }: any) => {
@@ -537,7 +474,7 @@ export default function ConsolePage({ companyName }: Props) {
       // The async function simulates fetching the next slide's script
       async ({query}: { [key: string]: any}) => {
         console.log("Using get-context tool");
-        let data: { message: string; images: any[] };
+        let data: { message: string; image: string };
         try {
           const res = await fetch(`http://127.0.0.1:8000/get-context`, {
             method: "POST",
@@ -554,6 +491,13 @@ export default function ConsolePage({ companyName }: Props) {
           return;
         }
         console.log("Context Retreived")
+
+          // Update image if available
+        if (data.image && data.image.length > 0) {
+          const imagePath = data.image.replace(/^public/, '')
+          setDisplayImage(imagePath);
+          setShowDefault(false);
+        }
         return data.message;
 
         // const prompt = `
