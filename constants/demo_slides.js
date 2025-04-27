@@ -53,7 +53,7 @@ export const slides = [
     "script": `
       Right now, you’ll get a dedicated success manager from Revola to guide setup — but that’s a limited-time offer.
       So if you’re ready to stop losing leads and start real conversations — let me, Reva, work for your product.
-      Let’s talk. Right now. Feel free to ask any question you have
+      Let’s talk. Right now. Feel free to ask any question you have.
     `
   }
 ]

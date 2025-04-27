@@ -105,9 +105,102 @@ export default function ConsolePage({ companyName }: Props) {
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
 
   // Demo slides
-  const [isInDemoMode, setIsInDemoMode] = useState(false); // To control demo flow
   const [currentSlideIndex, setCurrentSlideIndex] = useState(-1); // Start before the first slide
+  const currentSlideIndexRef = useRef(currentSlideIndex);
+  const [isInDemoMode, setIsInDemoMode] = useState(false); // To control demo flow
+  const isInDemoModeRef = useRef(false);
   const [isDemoFinished, setIsDemoFinished] = useState(false);
+  const isDemoFinishedRef = useRef(false);
+
+  useEffect(() => { isInDemoModeRef.current = isInDemoMode; }, [isInDemoMode]);
+  useEffect(() => { isDemoFinishedRef.current = isDemoFinished; }, [isDemoFinished]);
+  useEffect(() => { currentSlideIndexRef.current = currentSlideIndex; }, [currentSlideIndex]);
+
+  // Ref to store the timeout ID for the delay
+  const advanceSlideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Ref to track the previous state of isAgentSpeaking
+  const wasAgentSpeakingRef = useRef(false);
+  const triggerSentRef = useRef(false);
+
+  useEffect(() => {
+    const client = clientRef.current;
+    const currentTimeoutId = advanceSlideTimeoutRef.current;
+    // const slideIndexAtEffectStart = currentSlideIndexRef.current;
+
+    // console.log(`[Auto-Advance Effect Run] Index: ${slideIndexAtEffectStart}, isAgentSpeaking: ${isAgentSpeaking}, wasSpeaking: ${wasAgentSpeakingRef.current}, demoMode: ${isInDemoMode}, demoFinished: ${isDemoFinished}, existingTimerId: ${currentTimeoutId}, triggerSent: ${triggerSentRef.current}`);
+
+    // --- 1. Determine if conditions require clearing timer / resetting trigger flag ---
+    // Clear if demo stopped OR agent started speaking again
+    const shouldClearTimer = !isInDemoMode || isDemoFinished || isAgentSpeaking;
+
+    if (shouldClearTimer) { // Clear timer AND reset the trigger flag
+        if (currentTimeoutId) {
+            // console.log(`[Auto-Advance] Clearing existing timer ID ${currentTimeoutId} because conditions changed (speaking=${isAgentSpeaking}, demoMode=${isInDemoMode}, demoFinished=${isDemoFinished}).`);
+            clearTimeout(currentTimeoutId);
+            advanceSlideTimeoutRef.current = null;
+        }
+        // *** Reset the trigger flag whenever the agent speaks or demo ends ***
+        if (triggerSentRef.current) {
+             // console.log("[Auto-Advance] Resetting triggerSentRef to false.");
+             triggerSentRef.current = false;
+        }
+    }
+
+    // --- 2. Determine if conditions require starting a NEW timer ---
+    // Start if demo is active, agent JUST stopped, AND no timer is currently set
+    const agentJustStopped = wasAgentSpeakingRef.current && !isAgentSpeaking;
+    const shouldStartTimer =
+        isInDemoMode &&
+        !isDemoFinished &&
+        agentJustStopped &&
+        !advanceSlideTimeoutRef.current; // Check if ref is null (no timer active)
+
+    if (shouldStartTimer) {
+        // console.log(`[Auto-Advance] Conditions met to START timer (5000ms) for slide index ${slideIndexAtEffectStart}.`);
+
+        const newTimerId = setTimeout(() => {
+            // console.log(`[Auto-Advance Timeout Callback - Started ID: ${newTimerId}] Timer finished. Checking conditions...`);
+
+            const stillInDemo = isInDemoModeRef.current;
+            const stillNotFinished = !isDemoFinishedRef.current;
+            const stillNotSpeaking = !isAgentSpeaking;
+
+            // console.log(`[Auto-Advance Timeout Callback - Started ID: ${newTimerId}] Conditions Check: stillInDemo=${stillInDemo}, stillNotFinished=${stillNotFinished}, stillNotSpeaking=${stillNotSpeaking}, triggerSent: ${triggerSentRef.current}`);
+
+            // *** Add check for triggerSentRef ***
+            if (stillInDemo && stillNotFinished && stillNotSpeaking && !triggerSentRef.current) {
+                console.log(`[Auto-Advance Timeout Callback - Started ID: ${newTimerId}] Conditions still met AND trigger NOT sent. Triggering next slide.`);
+                if (client && client.isConnected()) {
+                    client.sendUserMessageContent([{ type: "input_text", text: "Okay, please proceed to the next slide." }]);
+                    // client.createResponse();
+                    // *** Set the flag immediately after sending ***
+                    triggerSentRef.current = true;
+                    console.log("[Auto-Advance Timeout Callback] Set triggerSentRef to true.");
+                }
+            }
+
+            // Clear the timer ref *only if it still matches*
+            if (advanceSlideTimeoutRef.current === newTimerId) {
+                advanceSlideTimeoutRef.current = null;
+            }
+
+        }, 3500)
+
+        advanceSlideTimeoutRef.current = newTimerId;
+    }
+
+    // --- 3. Update the 'previous' state ref for the next run ---
+    wasAgentSpeakingRef.current = isAgentSpeaking;
+
+    // --- 4. Cleanup function ---
+    return () => {
+        // console.log(`[Auto-Advance Effect Cleanup] Cleanup for effect run associated with initial timer ID: ${currentTimeoutId}`);
+        if (currentTimeoutId) {
+            // console.log(`[Auto-Advance Effect Cleanup] Clearing timer ID ${currentTimeoutId}`);
+            clearTimeout(currentTimeoutId);
+        }
+    };
+}, [isAgentSpeaking, isInDemoMode, isDemoFinished, clientRef]);
 
   // Set a timer to hide the default image after 15 seconds
   useEffect(() => {
@@ -186,8 +279,31 @@ export default function ConsolePage({ companyName }: Props) {
         type: 'semantic_vad',
         eagerness: 'low',
       },
+      tools: [
+        {
+          "type": "function",
+          "name": "get_demo_slide",
+          "description": "Retrieves the script for the next slide in the demo presentation sequence. Call this tool when you need to get the script for the slides when giving the demo.",
+          "parameters": {
+              "type": "object",
+              "properties": {},
+              "required": []
+          }
+        },
+        {
+          "type": "function",
+          "name": "get_context",
+          "description": "Retrieves context for company specific questions. Call this tool when the user has asked a company specific question and you do need more context to answer it.",
+          "parameters": {
+              "type": "object",
+              "properties": {
+                "query": {"type": "string"}
+              },
+              "required": ["query"]
+          }
+        },
+      ],
       temperature: 0.6,
-      max_response_output_tokens: 1000,
     });
     console.log(client.sessionConfig);
 
@@ -226,7 +342,7 @@ export default function ConsolePage({ companyName }: Props) {
         text: intro,
       },
     ]);
-    client.createResponse();
+    // client.createResponse();
 
     // Set state variables
     startTimeRef.current = new Date().toISOString();
@@ -353,60 +469,6 @@ export default function ConsolePage({ companyName }: Props) {
     message: string;
     images?: MediaItem[];
   } | null>(null);
-
-  const injectContext = async (transcript: string) => {
-    const client = clientRef.current;
-    client.updateSession({
-      instructions: instructions
-    });
-    if (!client || !sessionUUID) throw new Error("Session not ready");
-  
-    transcript = transcript.trim();
-    if (!transcript) return;
-  
-    const items = client.conversation.getItems();
-    const lastAssistant = items
-      .filter((i) => i.role === "assistant")
-      .reverse()[0];
-
-    if (lastAssistant) {
-      client.cancelResponse(lastAssistant.id);
-    }
-  
-    // 2) Give the socket a moment to settle (optional, but avoids races)
-    await new Promise((r) => setTimeout(r, 100));
-  
-    // 3) Fetch your vector‑store answer from your FastAPI
-    let data: { message: string; images: any[] };
-    try {
-      const res = await fetch(`http://127.0.0.1:8000/get-context`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uuid: sessionUUID, query: transcript }),
-      });
-      if (!res.ok) {
-        console.error("Backend error:", await res.text());
-        return;
-      }
-      data = await res.json();
-    } catch (err) {
-      console.error("Fetch failed:", err);
-      return;
-    }
-  
-    // 4) Build one clear instruction + context string
-    const prompt = `
-    <user_query> ${transcript} <user_query>
-    <context>${data.message}<context>`;
-
-  console.log(prompt);
-  
-    // 5) Finally, send this single prompt
-    client.sendUserMessageContent([
-      { type: "input_text", text: prompt },
-    ]);
-    client.createResponse();
-  };
   
   
   /**
@@ -554,16 +616,13 @@ export default function ConsolePage({ companyName }: Props) {
       if (evt.event.type !== 'conversation.item.input_audio_transcription.completed')
         return
       console.log('[onTranscript] transcript:', evt.event.transcript)
-      console.log('get context')
-      await injectContext(evt.event.transcript.trim())
-      console.log('context came')
+      // console.log('get context')
+      // await injectContext(evt.event.transcript.trim())
+      // console.log('context came')
     }
   
     const onConvUpdate = async ({ item, delta }: any) => {
-      if (delta?.audio) {
-        // ADD DELAY HERE BEFORE ADDING AUDIO
-        await new Promise((r) => setTimeout(r, 750)); // adjust to 1000ms if you want longer
-    
+      if (delta?.audio) {    
         wavStreamPlayer.add16BitPCM(delta.audio, item.id);
       }
     
@@ -576,7 +635,93 @@ export default function ConsolePage({ companyName }: Props) {
       setItems(client.conversation.getItems());
     };
     
-  
+    client.addTool({
+      name: 'get_demo_slide',
+      description: 'Retrieves the script for the next slide in the demo presentation sequence. Call this tool when you need to get the script for the slides when giving the demo.',
+      parameters: {
+        type: 'object',
+        properties: {}, // No parameters needed from the agent for this tool
+        required: [],
+      },
+    },
+      // The async function simulates fetching the next slide's script
+      async () => {
+        console.log("Called get_demo_slide tool");
+        if (currentSlideIndex == -1) {
+          setIsInDemoMode(true);
+        }
+        let currentSlide = currentSlideIndexRef.current
+        const nextIndex = currentSlide + 1;
+        console.log(nextIndex)
+        if (nextIndex < slides.length) {
+          // Update the persistent state to the new index
+          setCurrentSlideIndex(nextIndex);
+    
+          // Get the script for the new current slide
+          const slide = slides[nextIndex];
+          const script = slide.script;
+          console.log(`Tool: Returning script for slide ${nextIndex + 1}: "${script.substring(0, 30)}..."`);
+    
+          // Return the script for the agent to say
+          return {
+            slideNumber: slide.slideNumber,
+            script: script,
+            end_of_presentation: false
+          };
+        } else {
+          // Reached the end of the presentation
+          console.log("Tool: End of presentation reached.");
+          // Optionally reset index if you want the demo to loop or stop
+          // setCurrentSlideIndex(-1); // Reset for looping
+          setIsInDemoMode(false);
+          setIsDemoFinished(true);
+          return {
+            script: "This concludes the presentation.",
+            end_of_presentation: true
+          };
+        }
+    });
+    client.addTool({
+      name: 'get_context',
+      description: 'Retrieves context for company specific questions. Call this tool when the user has asked a company specific question and you do need more context to answer it.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: "the user's question or query"
+          }
+        }, // No parameters needed from the agent for this tool
+        required: ['query'],
+      },
+    },
+      // The async function simulates fetching the next slide's script
+      async ({query}: { [key: string]: any}) => {
+        console.log("Using get-context tool");
+        let data: { message: string; images: any[] };
+        try {
+          const res = await fetch(`http://127.0.0.1:8000/get-context`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ uuid: sessionUUID, query: query}),
+          });
+          if (!res.ok) {
+            console.error("Backend error:", await res.text());
+            return;
+          }
+          data = await res.json();
+        } catch (err) {
+          console.error("Fetch failed:", err);
+          return;
+        }
+        console.log("Context Retreived")
+        return data.message;
+
+        // const prompt = `
+        // <user_query> ${query} <user_query>
+        // <context>${data.message}<context>`;
+        // return prompt;
+    });
     client.on('realtime.event', onTranscript)
     client.on('conversation.updated', onConvUpdate)
     client.on('conversation.interrupted', async () => {
@@ -596,28 +741,6 @@ export default function ConsolePage({ companyName }: Props) {
       client.off('conversation.updated', onConvUpdate)
     }
   }, [sessionUUID])
-
-
-  // useEffect(() => {
-  //   if (isInDemoMode && !isDemoFinished && wasAgentSpeakingRef.current && !isAgentSpeaking) {
-  //     console.log('Agent stopped speaking during demo. Advancing slide...');
-
-  //     // Add a small delay to prevent triggering on brief pauses
-  //     const timerId = setTimeout(() => {
-  //        // Double-check if the agent is still silent before advancing
-  //        if (!isAgentSpeaking) {
-  //           advanceSlide();
-  //        } else {
-  //           console.log("Agent started speaking again, cancelling slide advance.");
-  //        }
-  //     }, 1000); // Delay of 1 second (adjust as needed)
-
-  //     // Cleanup function to cancel the timeout if the component unmounts
-  //     // or if the agent starts speaking again before the timeout finishes
-  //     return () => clearTimeout(timerId);
-
-  //   }
-  // }, [isAgentSpeaking])
 
   
   
@@ -708,10 +831,10 @@ export default function ConsolePage({ companyName }: Props) {
                 contextResponse &&
                 contextResponse.images &&
                 contextResponse.images.length > 0
-              ) ? (
-                <div className="assistant-image">
+              ) ? ( 
+                  <div className="assistant-image">
                   <img
-                    src="/images/default.png"
+                    src={isInDemoMode ? slides[currentSlideIndex]?.imagePath || '/images/default.png': '/images/default.png'}
                     alt="Default"
                     style={{
                       maxWidth: '1000px',
