@@ -35,7 +35,7 @@ export default function ConsolePage({ companyName }: Props) {
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const [textInput, setTextInput] = useState('');
-  const [displayImage, setDisplayImage] = useState('/revola-agent-body.png');
+  const [displayImage, setDisplayImage] = useState('/default.png');
   const [showDefault, setShowDefault] = useState(true);
   const [agentEmotion, setAgentEmotion] = useState('neutral');
   const [showIntro, setShowIntro] = useState(true);
@@ -159,25 +159,6 @@ export default function ConsolePage({ companyName }: Props) {
     };
 }, [isAgentSpeaking, isInDemoMode, isDemoFinished, clientRef]);
 
-  // Set a timer to hide the default image after 15 seconds
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowDefault(false);
-      setShowIntro(false);
-    }, 10000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Check for assistant images in responses
-  useEffect(() => {
-    items.forEach((item) => {
-      if (item.role === 'assistant' && (item as any).metadata?.image) {
-        console.log('Assistant response includes image URL:', (item as any).metadata.image);
-        setDisplayImage((item as any).metadata.image);
-      }
-    });
-  }, [items]);
-
   // Connect to conversation
   const connectConversation = useCallback(async () => {
     const client = clientRef.current;
@@ -257,7 +238,8 @@ export default function ConsolePage({ companyName }: Props) {
     console.log('API response:', data);
     setSessionUUID(data.uuid);
 
-    const intro = data.message;
+    const intro = `IMPORTANT: YOU ARE TO SAY EXACTLY THIS 'Hi there! I’m Reva — your AI sales engagement specialist, built by the team at Revola.
+        Let me show you how I can turn more of your website visitors into high-converting leads — without adding pressure or draining your sales team. You may input your email in the top right. How are you doing today?`;
 
     // Connect to realtime API
     try {
@@ -490,11 +472,12 @@ export default function ConsolePage({ companyName }: Props) {
           console.error("Fetch failed:", err);
           return;
         }
-        console.log("Context Retreived")
-
+        console.log("Context Retreived");
+        console.log(data);
           // Update image if available
         if (data.image && data.image.length > 0) {
           const imagePath = data.image.replace(/^public/, '')
+          console.log(imagePath)
           setDisplayImage(imagePath);
           setShowDefault(false);
         }
@@ -1045,7 +1028,7 @@ export default function ConsolePage({ companyName }: Props) {
             }}
           >
             <img 
-              src="/default.png" 
+              src={isInDemoMode ? slides[currentSlideIndex].imagePath : displayImage}
               alt="Welcome to Revola Demo" 
               style={{ 
                 maxWidth: '100%', 
