@@ -94,7 +94,7 @@ export default function ConsolePage({ companyName }: Props) {
               url: 'wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview',
               apiKey: apiKey,
               dangerouslyAllowAPIKeyInBrowser: true,
-              debug: true,
+              //debug: true,
             }
       );
     }
