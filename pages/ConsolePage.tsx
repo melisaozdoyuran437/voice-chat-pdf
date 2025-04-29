@@ -61,10 +61,6 @@ export default function ConsolePage({ companyName }: Props) {
   useEffect(() => { isDemoFinishedRef.current = isDemoFinished; }, [isDemoFinished]);
   useEffect(() => { 
     currentSlideIndexRef.current = currentSlideIndex; 
-    if (currentSlideIndex > slides.length) {
-      setIsDemoFinished(true);
-      setIsInDemoMode(false);
-    }
   }, [currentSlideIndex]);
   
   // Ref to store the timeout ID for the delay
@@ -98,6 +94,7 @@ export default function ConsolePage({ companyName }: Props) {
               url: 'wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview',
               apiKey: apiKey,
               dangerouslyAllowAPIKeyInBrowser: true,
+              debug: true,
             }
       );
     }
@@ -135,7 +132,7 @@ export default function ConsolePage({ companyName }: Props) {
             const stillNotSpeaking = !isAgentSpeaking;
             if (stillInDemo && stillNotFinished && stillNotSpeaking && !triggerSentRef.current) {
                 if (client && client.isConnected()) {
-                    client.sendUserMessageContent([{ type: "input_text", text: "Okay, please proceed to the next slide." }]);
+                    client.sendUserMessageContent([{ type: "input_text", text: "Proceed to the next slide." }]);
                     triggerSentRef.current = true;
                 }
             }
@@ -151,6 +148,11 @@ export default function ConsolePage({ companyName }: Props) {
 
     // Update the 'previous' state ref for the next run ---
     wasAgentSpeakingRef.current = isAgentSpeaking;
+
+    if (currentSlideIndex >= slides.length) {
+      setIsDemoFinished(true);
+      setIsInDemoMode(false);
+    }
 
     return () => {
         if (currentTimeoutId) {
@@ -185,10 +187,13 @@ export default function ConsolePage({ companyName }: Props) {
       },
       input_audio_transcription: {
         model: 'whisper-1',
+        language: 'en',
       },
       turn_detection: {
-        type: 'semantic_vad',
-        eagerness: 'low',
+        type: 'server_vad',
+        threshold: 0.5, // 0.0 to 1.0,
+        prefix_padding_ms: 300, // How much audio to include in the audio stream before the speech starts.
+        silence_duration_ms: 1000, // How long to wait to mark the speech as stopped.
       },
       tools: [
         {
@@ -239,7 +244,7 @@ export default function ConsolePage({ companyName }: Props) {
     setSessionUUID(data.uuid);
 
     const intro = `IMPORTANT: YOU ARE TO SAY EXACTLY THIS 'Hi there! I’m Reva — your AI sales engagement specialist, built by the team at Revola.
-        Let me show you how I can turn more of your website visitors into high-converting leads — without adding pressure or draining your sales team. You may input your email in the top right. How are you doing today?`;
+        Let me show you how I can turn more of your website visitors into high-converting leads — without adding pressure or draining your sales team. You may input your email in the top right anytime during the meeting if you want to be connected to the sales team. How are you doing today?`;
 
     // Connect to realtime API
     try {
@@ -286,13 +291,15 @@ export default function ConsolePage({ companyName }: Props) {
     setIsConnected(false);
     setRealtimeEvents([]);
     setItems([]);
-    setDisplayImage('/revola-agent.png');
+    setDisplayImage('/default.png');
     setShowDefault(true);
     setShowIntro(true);
     setAgentEmotion('neutral');
 
     const client = clientRef.current;
     if (!client) throw new Error('RealtimeClient is not initialized');
+    client.removeTool("get_context");
+    client.removeTool("get_demo_slide");
     client.disconnect();
 
     const wavRecorder = wavRecorderRef.current;
@@ -926,7 +933,7 @@ export default function ConsolePage({ companyName }: Props) {
        
         <div style={{ 
           width: '94%',
-          maxWidth: '1400px', 
+          // maxWidth: '1400px', 
           height: '88vh', 
           display: 'flex', 
           position: 'relative',
