@@ -190,10 +190,10 @@ export default function ConsolePage({ companyName }: Props) {
         language: 'en',
       },
       turn_detection: {
-        type: 'server_vad',
-        threshold: 0.5, // 0.0 to 1.0,
-        prefix_padding_ms: 300, // How much audio to include in the audio stream before the speech starts.
-        silence_duration_ms: 1000, // How long to wait to mark the speech as stopped.
+        type: 'semantic_vad',
+        eagerness: 'low',
+        create_response: true, // only in conversation mode
+        interrupt_response: true, // only in conversation mode
       },
       tools: [
         {
@@ -295,6 +295,7 @@ export default function ConsolePage({ companyName }: Props) {
     setShowDefault(true);
     setShowIntro(true);
     setAgentEmotion('neutral');
+    setCurrentSlideIndex(-1);
 
     const client = clientRef.current;
     if (!client) throw new Error('RealtimeClient is not initialized');
