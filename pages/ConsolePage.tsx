@@ -94,7 +94,7 @@ export default function ConsolePage({ companyName }: Props) {
               url: 'wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview',
               apiKey: apiKey,
               dangerouslyAllowAPIKeyInBrowser: true,
-              //debug: true,
+              debug: true,
             }
       );
     }
@@ -199,7 +199,7 @@ export default function ConsolePage({ companyName }: Props) {
         {
           "type": "function",
           "name": "get_demo_slide",
-          "description": "Retrieves the script for the next slide in the demo presentation sequence. Call this tool when you need to get the script for the slides when giving the demo.",
+          "description": "Retrieves the script for the next slide in the demo presentation sequence. If the USER responds affirmatively to the demo offer (e.g., using phrases like 'yes', 'sure', 'okay', 'sounds good', 'that sounds great', 'alright', 'start demo', 'show me the demo'), call this tool immediately. Call this tool when you need to get the script for the slides when giving the demo.",
           "parameters": {
               "type": "object",
               "properties": {},
@@ -219,7 +219,7 @@ export default function ConsolePage({ companyName }: Props) {
           }
         },
       ],
-      temperature: 0.6,
+      temperature: 0.8,
     });
 
     // Initialize session with backend
@@ -296,6 +296,7 @@ export default function ConsolePage({ companyName }: Props) {
     setShowIntro(true);
     setAgentEmotion('neutral');
     setCurrentSlideIndex(-1);
+    setIsDemoFinished(false);
 
     const client = clientRef.current;
     if (!client) throw new Error('RealtimeClient is not initialized');
@@ -405,7 +406,7 @@ export default function ConsolePage({ companyName }: Props) {
     
     client.addTool({
       name: 'get_demo_slide',
-      description: 'Retrieves the script for the next slide in the demo presentation sequence. Call this tool when you need to get the script for the slides when giving the demo.',
+      description: "Retrieves the script for the next slide in the demo presentation sequence. If the USER responds affirmatively to the demo offer (e.g., using phrases like 'yes', 'sure', 'okay', 'sounds good', 'that sounds great', 'alright', 'start demo', 'show me the demo'), call this tool immediately. Call this tool when you need to get the script for the slides when giving the demo.",
       parameters: {
         type: 'object',
         properties: {}, // No parameters needed from the agent for this tool
@@ -431,19 +432,16 @@ export default function ConsolePage({ companyName }: Props) {
     
           // Return the script for the agent to say
           return {
-            slideNumber: slide.slideNumber,
             script: script,
-            end_of_presentation: false
           };
         } else {
           // Reached the end of the presentation
-          setCurrentSlideIndex(nextIndex);
+          setCurrentSlideIndex(10000);
           console.log("END OF PRESENTATION");
           setIsInDemoMode(false);
           setIsDemoFinished(true);
           return {
-            script: "This concludes the presentation.",
-            end_of_presentation: true
+            script: "And that wraps up the main demo!",
           };
         }
     });
@@ -1400,6 +1398,7 @@ export default function ConsolePage({ companyName }: Props) {
               opacity: 1;
               transform: translateY(0);
             }
+          }
           
 
 
