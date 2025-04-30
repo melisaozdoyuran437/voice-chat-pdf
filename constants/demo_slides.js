@@ -32,7 +32,7 @@ export const slides = [
     "imagePath": "./slides/revola_demo_slide_4.jpg",
     "script": `
       What does that mean for you?
-      10 times higher lead conversions. 10 times lowered cost. I speak 57 languages and will run on your site nonstop.
+      10 times higher lead conversions for 10 times lowered cost. I speak 57 languages and will run on your site nonstop.
       While your human team focuses on closing deals, I will handle the front lines — smarter and faster.
     `
   },

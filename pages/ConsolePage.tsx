@@ -141,7 +141,7 @@ export default function ConsolePage({ companyName }: Props) {
                 advanceSlideTimeoutRef.current = null;
             }
 
-        }, 3500)
+        }, 1500)
 
         advanceSlideTimeoutRef.current = newTimerId;
     }
