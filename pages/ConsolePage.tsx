@@ -7,7 +7,7 @@ import { slides } from '../constants/demo_slides.js';
 import EmailSubscription from '../components/EmailSubscription';
 
 const LOCAL_RELAY_SERVER_URL: string = process.env.REACT_APP_LOCAL_RELAY_SERVER_URL || '';
-
+const BACKEND_URL : string = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://agent.revola.ai'
 /**
  * Type for event logs
  */
@@ -223,7 +223,7 @@ export default function ConsolePage({ companyName }: Props) {
     });
 
     // Initialize session with backend
-    const response = await fetch('http://127.0.0.1:8000/initialize', {
+    const response = await fetch(`${BACKEND_URL}/initialize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -464,7 +464,7 @@ export default function ConsolePage({ companyName }: Props) {
         console.log("Using get-context tool");
         let data: { message: string; image: string };
         try {
-          const res = await fetch(`http://127.0.0.1:8000/get-context`, {
+          const res = await fetch(`${BACKEND_URL}/get-context`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ uuid: sessionUUID, query: query}),
