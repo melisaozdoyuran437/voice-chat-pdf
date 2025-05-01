@@ -7,6 +7,7 @@ import { slides } from '../constants/demo_slides.js';
 import EmailSubscription from '../components/EmailSubscription';
 
 const LOCAL_RELAY_SERVER_URL: string = process.env.REACT_APP_LOCAL_RELAY_SERVER_URL || '';
+const BACKEND_URL: string = process.env.NEXT_PUBLIC_BACKEND_URL;
 
 /**
  * Type for event logs
@@ -132,7 +133,7 @@ export default function ConsolePage({ companyName }: Props) {
             const stillNotSpeaking = !isAgentSpeaking;
             if (stillInDemo && stillNotFinished && stillNotSpeaking && !triggerSentRef.current) {
                 if (client && client.isConnected()) {
-                    client.sendUserMessageContent([{ type: "input_text", text: "Proceed to the next slide." }]);
+                    client.sendUserMessageContent([{ type: "input_text", text: "Proceed to the next slide by calling the 'get_demo_script' tool." }]);
                     triggerSentRef.current = true;
                 }
             }
@@ -198,8 +199,8 @@ export default function ConsolePage({ companyName }: Props) {
       tools: [
         {
           "type": "function",
-          "name": "get_demo_slide",
-          "description": "Retrieves the script for the next slide in the demo presentation sequence. If the USER responds affirmatively to the demo offer (e.g., using phrases like 'yes', 'sure', 'okay', 'sounds good', 'that sounds great', 'alright', 'start demo', 'show me the demo'), call this tool immediately. Call this tool when you need to get the script for the slides when giving the demo.",
+          "name": "get_demo_script",
+          "description": "Retrieves the script for the next slide in the demo presentation sequence. If the USER responds affirmatively to the demo offer (For example, using phrases like 'yes', 'yeah', 'let's start with the demo', 'sure', 'okay', 'sounds good', 'that sounds great', 'alright', 'start demo', 'show me the demo' or any similar phrases), call this tool immediately. Call this tool when you need to get the script for the slides when giving the demo.",
           "parameters": {
               "type": "object",
               "properties": {},
@@ -219,11 +220,11 @@ export default function ConsolePage({ companyName }: Props) {
           }
         },
       ],
-      temperature: 0.8,
+      temperature: 0.7,
     });
-
+    console.log(BACKEND_URL);
     // Initialize session with backend
-    const response = await fetch('http://127.0.0.1:8000/initialize', {
+    const response = await fetch(`${BACKEND_URL}/initialize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -244,7 +245,7 @@ export default function ConsolePage({ companyName }: Props) {
     setSessionUUID(data.uuid);
 
     const intro = `IMPORTANT: YOU ARE TO SAY EXACTLY THIS 'Hi there! I’m Reva — your AI sales engagement specialist, built by the team at Revola.
-        Let me show you how I can turn more of your website visitors into high-converting leads — without adding pressure or draining your sales team. You may input your email in the top right anytime during the meeting if you want to be connected to the sales team. How are you doing today?`;
+        Let me show you how I can turn more of your website visitors into high-converting leads — without adding pressure or draining your sales team. You may input your email in the top right anytime during the meeting if you're interested in using Reva for your own products and you will be connected to the Revola sales team. How are you doing today?`;
 
     // Connect to realtime API
     try {
@@ -297,11 +298,12 @@ export default function ConsolePage({ companyName }: Props) {
     setAgentEmotion('neutral');
     setCurrentSlideIndex(-1);
     setIsDemoFinished(false);
+    setIsInDemoMode(false);
 
     const client = clientRef.current;
     if (!client) throw new Error('RealtimeClient is not initialized');
     client.removeTool("get_context");
-    client.removeTool("get_demo_slide");
+    client.removeTool("get_demo_script");
     client.disconnect();
 
     const wavRecorder = wavRecorderRef.current;
@@ -405,8 +407,8 @@ export default function ConsolePage({ companyName }: Props) {
     };
     
     client.addTool({
-      name: 'get_demo_slide',
-      description: "Retrieves the script for the next slide in the demo presentation sequence. If the USER responds affirmatively to the demo offer (e.g., using phrases like 'yes', 'sure', 'okay', 'sounds good', 'that sounds great', 'alright', 'start demo', 'show me the demo'), call this tool immediately. Call this tool when you need to get the script for the slides when giving the demo.",
+      name: 'get_demo_script',
+      description: "Retrieves the demo script for the next slide in the demo presentation sequence. If the USER responds affirmatively to the demo offer (For example, using phrases like 'yes', 'yeah', 'let's start with the demo', 'sure', 'okay', 'sounds good', 'that sounds great', 'alright', 'start demo', 'show me the demo' or any similar phrases), call this tool immediately. Call this tool when you need to get the script for the slides when giving the demo.",
       parameters: {
         type: 'object',
         properties: {}, // No parameters needed from the agent for this tool
@@ -415,7 +417,7 @@ export default function ConsolePage({ companyName }: Props) {
     },
       // The async function simulates fetching the next slide's script
       async () => {
-        console.log("Called get_demo_slide tool");
+        console.log("Called get_demo_script tool");
         if (currentSlideIndex == -1) {
           setIsInDemoMode(true);
         }
@@ -464,7 +466,7 @@ export default function ConsolePage({ companyName }: Props) {
         console.log("Using get-context tool");
         let data: { message: string; image: string };
         try {
-          const res = await fetch(`http://127.0.0.1:8000/get-context`, {
+          const res = await fetch(`${BACKEND_URL}/get-context`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ uuid: sessionUUID, query: query}),
