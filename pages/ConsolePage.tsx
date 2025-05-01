@@ -50,6 +50,7 @@ export default function ConsolePage({ companyName }: Props) {
   const [isEmailPopupOpen, setIsEmailPopupOpen] = useState(false);
   
   // Demo slides
+  const [isCheckingEndOfStream, setIsCheckingEndOfStream] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(-1); // Start before the first slide
   const currentSlideIndexRef = useRef(currentSlideIndex);
   const [isInDemoMode, setIsInDemoMode] = useState(false); // To control demo flow
@@ -62,12 +63,57 @@ export default function ConsolePage({ companyName }: Props) {
   useEffect(() => { 
     currentSlideIndexRef.current = currentSlideIndex; 
   }, [currentSlideIndex]);
-  
-  // Ref to store the timeout ID for the delay
-  const advanceSlideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Ref to track the previous state of isAgentSpeaking
-  const wasAgentSpeakingRef = useRef(false);
-  const triggerSentRef = useRef(false);
+
+
+  // Change slides in Demo mode
+  useEffect(() => {
+    let checkIntervalId: NodeJS.Timeout | null = null;
+    const player = wavStreamPlayerRef.current;
+    const client = clientRef.current;
+
+    const performCheck = () => {
+      if (!isCheckingEndOfStream || !isInDemoModeRef.current || isDemoFinishedRef.current || !player || !client) {
+        if (checkIntervalId) clearInterval(checkIntervalId);
+        checkIntervalId = null;
+        // Ensure flag is reset if check fails due to changed conditions
+        if (isCheckingEndOfStream) setIsCheckingEndOfStream(false);
+        return;
+      }
+
+      // Check if the player stream has ended
+      if (player.endOfStream()) {
+        client.sendUserMessageContent([
+          { type: 'input_text', text: "Okay, proceed to the next slide by calling the 'get_demo_script' tool." }
+        ]);
+
+        // Reset the flag since action was taken
+        if (checkIntervalId) clearInterval(checkIntervalId);
+        checkIntervalId = null;
+        setIsCheckingEndOfStream(false);
+      }
+    };
+
+    if (isCheckingEndOfStream && isInDemoModeRef.current && !isDemoFinishedRef.current && player && client) {
+
+      // Perform an initial check almost immediately after flag is set
+      const initialCheckTimeout = setTimeout(() => {
+        performCheck();
+
+        if (isCheckingEndOfStream && checkIntervalId === null) { 
+          checkIntervalId = setInterval(performCheck, 300); 
+        }
+      }, 50); 
+
+      return () => {
+        clearTimeout(initialCheckTimeout);
+        if (checkIntervalId) {
+          clearInterval(checkIntervalId);
+          checkIntervalId = null;
+        }
+      };
+    }
+
+  }, [isCheckingEndOfStream]);
 
 
   // Initialize API key from localStorage
@@ -100,66 +146,6 @@ export default function ConsolePage({ companyName }: Props) {
     }
   }, [apiKey]);
 
-  useEffect(() => {
-    const client = clientRef.current;
-    const currentTimeoutId = advanceSlideTimeoutRef.current;
-    // Clear if demo stopped OR agent started speaking again
-    const shouldClearTimer = !isInDemoMode || isDemoFinished || isAgentSpeaking;
-
-    if (shouldClearTimer) { // Clear timer AND reset the trigger flag
-        if (currentTimeoutId) {
-            clearTimeout(currentTimeoutId);
-            advanceSlideTimeoutRef.current = null;
-        }
-        // *** Reset the trigger flag whenever the agent speaks or demo ends ***
-        if (triggerSentRef.current) {
-             triggerSentRef.current = false;
-        }
-    }
-
-    // Determine if conditions require starting a NEW timer ---
-    const agentJustStopped = wasAgentSpeakingRef.current && !isAgentSpeaking;
-    const shouldStartTimer =
-        isInDemoMode &&
-        !isDemoFinished &&
-        agentJustStopped &&
-        !advanceSlideTimeoutRef.current; // Check if ref is null (no timer active)
-
-    if (shouldStartTimer) {
-        const newTimerId = setTimeout(() => {
-            const stillInDemo = isInDemoModeRef.current;
-            const stillNotFinished = !isDemoFinishedRef.current;
-            const stillNotSpeaking = !isAgentSpeaking;
-            if (stillInDemo && stillNotFinished && stillNotSpeaking && !triggerSentRef.current) {
-                if (client && client.isConnected()) {
-                    client.sendUserMessageContent([{ type: "input_text", text: "Proceed to the next slide by calling the 'get_demo_script' tool." }]);
-                    triggerSentRef.current = true;
-                }
-            }
-
-            if (advanceSlideTimeoutRef.current === newTimerId) {
-                advanceSlideTimeoutRef.current = null;
-            }
-
-        }, 1500)
-
-        advanceSlideTimeoutRef.current = newTimerId;
-    }
-
-    // Update the 'previous' state ref for the next run ---
-    wasAgentSpeakingRef.current = isAgentSpeaking;
-
-    if (currentSlideIndex >= slides.length) {
-      setIsDemoFinished(true);
-      setIsInDemoMode(false);
-    }
-
-    return () => {
-        if (currentTimeoutId) {
-            clearTimeout(currentTimeoutId);
-        }
-    };
-}, [isAgentSpeaking, isInDemoMode, isDemoFinished, clientRef]);
 
   // Connect to conversation
   const connectConversation = useCallback(async () => {
@@ -223,7 +209,7 @@ export default function ConsolePage({ companyName }: Props) {
     });
     console.log(BACKEND_URL);
     // Initialize session with backend
-    const response = await fetch(`${BACKEND_URL}/initialize`, {
+    const response = await fetch(`${BACKEND_URL}initialize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -298,6 +284,7 @@ export default function ConsolePage({ companyName }: Props) {
     setCurrentSlideIndex(-1);
     setIsDemoFinished(false);
     setIsInDemoMode(false);
+    setIsCheckingEndOfStream(false);
 
     const client = clientRef.current;
     if (!client) throw new Error('RealtimeClient is not initialized');
@@ -392,7 +379,9 @@ export default function ConsolePage({ companyName }: Props) {
     const onConvUpdate = async ({ item, delta }: any) => {
       if (delta?.audio) {
         // Add delay before adding audio
-        await new Promise((r) => setTimeout(r, 750));
+        if (isInDemoModeRef.current && !isDemoFinishedRef.current) {
+          setIsCheckingEndOfStream(true);
+        }
         wavStreamPlayer.add16BitPCM(delta.audio, item.id);
       }
     
@@ -465,7 +454,7 @@ export default function ConsolePage({ companyName }: Props) {
         console.log("Using get-context tool");
         let data: { message: string; image: string };
         try {
-          const res = await fetch(`${BACKEND_URL}/get-context`, {
+          const res = await fetch(`${BACKEND_URL}get-context`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ uuid: sessionUUID, query: query}),
@@ -498,6 +487,7 @@ export default function ConsolePage({ companyName }: Props) {
     client.on('realtime.event', onTranscript)
     client.on('conversation.updated', onConvUpdate)
     client.on('conversation.interrupted', async () => {
+      setIsCheckingEndOfStream(false);
       const trackSampleOffset = await wavStreamPlayer.interrupt();
       if (trackSampleOffset?.trackId) {
         const { trackId, offset } = trackSampleOffset;
