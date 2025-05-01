@@ -7,12 +7,7 @@ import { slides } from '../constants/demo_slides.js';
 import EmailSubscription from '../components/EmailSubscription';
 
 const LOCAL_RELAY_SERVER_URL: string = process.env.REACT_APP_LOCAL_RELAY_SERVER_URL || '';
-<<<<<<< HEAD
-const BACKEND_URL: string = process.env.NEXT_PUBLIC_BACKEND_URL;
-
-=======
 const BACKEND_URL : string = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://agent.revola.ai'
->>>>>>> 4c7ab43de096df6bb365cb187ce3e05c48cb497f
 /**
  * Type for event logs
  */
