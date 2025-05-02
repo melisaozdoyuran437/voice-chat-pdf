@@ -5,6 +5,7 @@ import { WavRecorder, WavStreamPlayer } from '../lib/wavtools/index.js';
 import { instructions } from '../constants/conversation_config.js';
 import { slides } from '../constants/demo_slides.js';
 import EmailSubscription from '../components/EmailSubscription';
+import { on } from 'events';
 
 const LOCAL_RELAY_SERVER_URL: string = process.env.REACT_APP_LOCAL_RELAY_SERVER_URL || '';
 const BACKEND_URL : string = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://agent.revola.ai'
@@ -36,9 +37,7 @@ export default function ConsolePage({ companyName }: Props) {
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const [textInput, setTextInput] = useState('');
   const [displayImage, setDisplayImage] = useState('/default.png');
-  const [showDefault, setShowDefault] = useState(true);
   const [agentEmotion, setAgentEmotion] = useState('neutral');
-  const [showIntro, setShowIntro] = useState(true);
 
   // References
   const wavRecorderRef = useRef<WavRecorder>(new WavRecorder({ sampleRate: 24000 }));
@@ -58,61 +57,248 @@ export default function ConsolePage({ companyName }: Props) {
   const [isDemoFinished, setIsDemoFinished] = useState(false);
   const isDemoFinishedRef = useRef(false);
 
+  const [isDemoInterrupted, setIsDemoInterrupted] = useState(false);
+  const isDemoInterruptedRef = useRef(isDemoInterrupted); // Ref for callbacks
+  const interruptedScriptRef = useRef<string | null>(null); // Store the script being read when interrupted
+
   useEffect(() => { isInDemoModeRef.current = isInDemoMode; }, [isInDemoMode]);
   useEffect(() => { isDemoFinishedRef.current = isDemoFinished; }, [isDemoFinished]);
-  useEffect(() => { 
-    currentSlideIndexRef.current = currentSlideIndex; 
-  }, [currentSlideIndex]);
+  useEffect(() => { currentSlideIndexRef.current = currentSlideIndex; }, [currentSlideIndex]);
+  useEffect(() => { isDemoInterruptedRef.current = isDemoInterrupted; }, [isDemoInterrupted]);
+
+  // Set up event handlers for RealtimeClient
+  useEffect(() => {
+    const client = clientRef.current;
+    const wavStreamPlayer = wavStreamPlayerRef.current;
+    if (!client || !sessionUUID) return;
+  
+    console.log('[useEffect] 🏷 registering handlers');
+  
+    const onTranscript = async (evt: any) => {
+      if (evt.event.type !== 'conversation.item.input_audio_transcription.completed')
+        return;
+      console.log('[onTranscript] transcript:', evt.event.transcript);
+    };
+  
+    const onConvUpdate = async ({ item, delta }: any) => {
+      // always enqueue whatever audio we got
+      if (delta?.audio) {
+        wavStreamPlayer.add16BitPCM(delta.audio, item.id);
+      }
+
+      if (delta?.audio && delta.audio.length > 0) {
+        // Was this a Q&A turn?
+        if (isDemoInterruptedRef.current) {
+          setIsCheckingEndOfStream(true);
+        }
+        // Or a normal demo turn?
+        else if (isInDemoModeRef.current && !isDemoFinishedRef.current) {
+          setIsCheckingEndOfStream(true);
+        }
+      }
+    
+      if (item.status === 'completed' && item.formatted.audio?.length) {
+        WavRecorder.decode(item.formatted.audio, 24000, 24000).then((wav) => {
+          item.formatted.file = wav;
+        });
+      }
+    
+      setItems(client.conversation.getItems());
+    };
+
+    const onInterrupt = async () => {
+      console.warn('[onInterrupt] Conversation interrupted by user.');
+      // --- Set interruption state ---
+      // if (isInDemoModeRef.current && !isDemoFinishedRef.current) {
+      //     setIsDemoInterrupted(true); // Set flag
+      // }
+      // --- End interruption state handling ---
+
+      setIsCheckingEndOfStream(false);
+      const trackSampleOffset = await wavStreamPlayer.interrupt();
+      if (trackSampleOffset?.trackId) {
+        const { trackId, offset } = trackSampleOffset;
+        await client.cancelResponse(trackId, offset);
+      }
+  };
+    
+    client.addTool({
+      name: 'get_demo_script',
+      description: "Retrieves the demo script for the next slide in the demo presentation sequence. If the USER responds affirmatively to the demo offer (For example, using phrases like 'yes', 'yeah', 'let's start with the demo', 'sure', 'okay', 'sounds good', 'that sounds great', 'alright', 'start demo', 'show me the demo' or any similar phrases), call this tool immediately. Call this tool when you need to get the script for the slides when giving the demo.",
+      parameters: {
+        type: 'object',
+        properties: {}, // No parameters needed from the agent for this tool
+        required: [],
+      },
+    },
+      // The async function simulates fetching the next slide's script
+      async () => {
+        if (interruptedScriptRef.current) {
+          setIsDemoInterrupted(false);
+          const script = interruptedScriptRef.current
+          interruptedScriptRef.current = null; // Clear stored script
+          return {
+            script: script,
+          }
+        }
+        console.log("Called get_demo_script tool");
+        if (currentSlideIndexRef.current === -1 && !isInDemoModeRef.current) {
+          setIsInDemoMode(true);
+        }
+        let currentSlide = currentSlideIndexRef.current
+        const nextIndex = currentSlide + 1;
+        if (nextIndex < slides.length) {
+          setCurrentSlideIndex(nextIndex); // Update state for the new slide *index*
+          const slide = slides[nextIndex];
+          const script = slide.script;
+          console.log(`[Tool: get_demo_script] Returning script for slide ${nextIndex + 1}: "${script.substring(0, 50)}..."`);
+
+          interruptedScriptRef.current = script;
+
+          return {
+            script: script,
+          };
+        } else {
+          // Reached the end of the presentation
+          console.log("END OF PRESENTATION")
+          setCurrentSlideIndex(10000); // Use a sentinel value for end
+          setIsInDemoMode(false); // Exit demo mode
+          setIsDemoFinished(true); // Mark demo as finished
+          setIsCheckingEndOfStream(false);
+          interruptedScriptRef.current = null; // Clear script ref
+          return {
+            script: "And that wraps up the main demo!",
+          };
+        }
+    });
+    client.addTool({
+      name: 'get_context',
+      description: 'Retrieves context for company specific questions. Call this tool when the user has asked a company specific question and you do need more context to answer it.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: "the user's question or query"
+          }
+        }, // No parameters needed from the agent for this tool
+        required: ['query'],
+      },
+    },
+      // The async function simulates fetching the next slide's script
+      async ({query}: { [key: string]: any}) => {
+        console.log("Using get-context tool");
+        console.log(`isInDemoModeRef.current = ${isInDemoModeRef.current} isDemoFinishedRef.current = ${isDemoFinishedRef.current} isDemoInterruptedRef.current = ${isDemoInterruptedRef.current} isCheckingEndOfStream = ${isCheckingEndOfStream}`);
+        let data: { message: string; image: string, image_description: string };
+        try {
+          const res = await fetch(`${BACKEND_URL}get-context`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ uuid: sessionUUID, query: query}),
+          });
+          if (!res.ok) {
+            console.error("Backend error:", await res.text());
+            return;
+          }
+          data = await res.json();
+        } catch (err) {
+          console.error("Fetch failed:", err);
+          return;
+        }
+        console.log("Context Retreived");
+        console.log(data);
+          // Update image if available
+        if (data.image && data.image.length > 0) {
+          const imagePath = data.image.replace(/^public/, '')
+          console.log(imagePath)
+          setDisplayImage(imagePath);
+        }
+
+        let context = 
+        `Textual Context: ${data.message}
+         \n\n
+         Visual Context (What the user sees on the screen): ${data.image_description}
+        `
+        if (isInDemoModeRef.current && !isDemoFinishedRef.current) {
+          setIsDemoInterrupted(true); // Set flag
+          context = context + "You are currently in a demo. After answering this question, tell you user you will be getting back to the demo and continue the demo without asking the user if they have any more questions.";
+        }
+        return context;
+    });
+    client.on('realtime.event', onTranscript)
+    client.on('conversation.updated', onConvUpdate)
+    client.on('conversation.interrupted', onInterrupt);
+  
+    // seed the UI
+    setItems(client.conversation.getItems())
+  
+    return () => {
+      console.log('[useEffect] 🔥 tearing down handlers')
+      client.off('realtime.event', onTranscript)
+      client.off('conversation.updated', onConvUpdate)
+      client.off('conversation.interrupted', onInterrupt);
+    }
+  }, [sessionUUID])
 
 
-  // Change slides in Demo mode
+  // Handle slide change during Demo
   useEffect(() => {
     let checkIntervalId: NodeJS.Timeout | null = null;
     const player = wavStreamPlayerRef.current;
     const client = clientRef.current;
-
-    const performCheck = () => {
-      if (!isCheckingEndOfStream || !isInDemoModeRef.current || isDemoFinishedRef.current || !player || !client) {
+  
+    const performCheck = async () => {
+      // if we're not in a streaming state any more, tear down
+      if (!isCheckingEndOfStream || !player || !client) {
         if (checkIntervalId) clearInterval(checkIntervalId);
         checkIntervalId = null;
-        // Ensure flag is reset if check fails due to changed conditions
         if (isCheckingEndOfStream) setIsCheckingEndOfStream(false);
         return;
       }
-
-      // Check if the player stream has ended
+  
+      // when the audio finishes streaming...
       if (player.endOfStream()) {
-        client.sendUserMessageContent([
-          { type: 'input_text', text: "Okay, proceed to the next slide by calling the 'get_demo_script' tool." }
-        ]);
-
-        // Reset the flag since action was taken
+        // clear the flag so we don’t re‑enter
         if (checkIntervalId) clearInterval(checkIntervalId);
         checkIntervalId = null;
         setIsCheckingEndOfStream(false);
+  
+        // if we’re in an interruption, send a “resume demo” signal
+        if (isDemoInterruptedRef.current) {
+          client.sendUserMessageContent([
+            {
+              type: 'input_text',
+              text: "Resume the demo by calling the 'get_demo_script' tool and reread the previous slide's script.",
+            },
+          ]);
+          // reset the interruption state so we can continue normally
+          setIsDemoInterrupted(false);
+        }
+        // otherwise: normal “next slide” flow
+        else if (isInDemoModeRef.current && !isDemoFinishedRef.current) {
+          interruptedScriptRef.current = null;
+          client.sendUserMessageContent([
+            {
+              type: 'input_text',
+              text: "Okay, proceed to the next slide by calling the 'get_demo_script' tool.",
+            },
+          ]);
+        }
       }
     };
-
-    if (isCheckingEndOfStream && isInDemoModeRef.current && !isDemoFinishedRef.current && player && client) {
-
-      // Perform an initial check almost immediately after flag is set
-      const initialCheckTimeout = setTimeout(() => {
-        performCheck();
-
-        if (isCheckingEndOfStream && checkIntervalId === null) { 
-          checkIntervalId = setInterval(performCheck, 300); 
-        }
-      }, 50); 
-
+  
+    if (isCheckingEndOfStream && player && client) {
+      // do an initial quick check...
+      const initial = setTimeout(performCheck, 50);
+      // then poll every 300ms until we hit endOfStream
+      if (isCheckingEndOfStream) {
+        checkIntervalId = setInterval(performCheck, 300);
+      }
       return () => {
-        clearTimeout(initialCheckTimeout);
-        if (checkIntervalId) {
-          clearInterval(checkIntervalId);
-          checkIntervalId = null;
-        }
+        clearTimeout(initial);
+        if (checkIntervalId) clearInterval(checkIntervalId);
       };
     }
-
   }, [isCheckingEndOfStream]);
 
 
@@ -205,7 +391,7 @@ export default function ConsolePage({ companyName }: Props) {
           }
         },
       ],
-      temperature: 0.7,
+      temperature: 0.8,
     });
     console.log(BACKEND_URL);
     // Initialize session with backend
@@ -278,13 +464,13 @@ export default function ConsolePage({ companyName }: Props) {
     setRealtimeEvents([]);
     setItems([]);
     setDisplayImage('/default.png');
-    setShowDefault(true);
-    setShowIntro(true);
     setAgentEmotion('neutral');
     setCurrentSlideIndex(-1);
     setIsDemoFinished(false);
     setIsInDemoMode(false);
     setIsCheckingEndOfStream(false);
+    setIsDemoInterrupted(false);
+    interruptedScriptRef.current = null;
 
     const client = clientRef.current;
     if (!client) throw new Error('RealtimeClient is not initialized');
@@ -361,149 +547,6 @@ export default function ConsolePage({ companyName }: Props) {
     // Clear the text input field
     setTextInput('');
   };
-
-  // Set up event handlers for RealtimeClient
-  useEffect(() => {
-    const client = clientRef.current;
-    const wavStreamPlayer = wavStreamPlayerRef.current;
-    if (!client || !sessionUUID) return;
-  
-    console.log('[useEffect] 🏷 registering handlers');
-  
-    const onTranscript = async (evt: any) => {
-      if (evt.event.type !== 'conversation.item.input_audio_transcription.completed')
-        return;
-      console.log('[onTranscript] transcript:', evt.event.transcript);
-    };
-  
-    const onConvUpdate = async ({ item, delta }: any) => {
-      if (delta?.audio) {
-        // Add delay before adding audio
-        if (isInDemoModeRef.current && !isDemoFinishedRef.current) {
-          setIsCheckingEndOfStream(true);
-        }
-        wavStreamPlayer.add16BitPCM(delta.audio, item.id);
-      }
-    
-      if (item.status === 'completed' && item.formatted.audio?.length) {
-        WavRecorder.decode(item.formatted.audio, 24000, 24000).then((wav) => {
-          item.formatted.file = wav;
-        });
-      }
-    
-      setItems(client.conversation.getItems());
-    };
-    
-    client.addTool({
-      name: 'get_demo_script',
-      description: "Retrieves the demo script for the next slide in the demo presentation sequence. If the USER responds affirmatively to the demo offer (For example, using phrases like 'yes', 'yeah', 'let's start with the demo', 'sure', 'okay', 'sounds good', 'that sounds great', 'alright', 'start demo', 'show me the demo' or any similar phrases), call this tool immediately. Call this tool when you need to get the script for the slides when giving the demo.",
-      parameters: {
-        type: 'object',
-        properties: {}, // No parameters needed from the agent for this tool
-        required: [],
-      },
-    },
-      // The async function simulates fetching the next slide's script
-      async () => {
-        console.log("Called get_demo_script tool");
-        if (currentSlideIndex == -1) {
-          setIsInDemoMode(true);
-        }
-        let currentSlide = currentSlideIndexRef.current
-        const nextIndex = currentSlide + 1;
-        if (nextIndex < slides.length) {
-          // Update the persistent state to the new index
-          setCurrentSlideIndex(nextIndex);
-    
-          // Get the script for the new current slide
-          const slide = slides[nextIndex];
-          const script = slide.script;
-          console.log(`Tool: Returning script for slide ${nextIndex + 1}: "${script.substring(0, 30)}..."`);
-    
-          // Return the script for the agent to say
-          return {
-            script: script,
-          };
-        } else {
-          // Reached the end of the presentation
-          setCurrentSlideIndex(10000);
-          console.log("END OF PRESENTATION");
-          setIsInDemoMode(false);
-          setIsDemoFinished(true);
-          return {
-            script: "And that wraps up the main demo!",
-          };
-        }
-    });
-    client.addTool({
-      name: 'get_context',
-      description: 'Retrieves context for company specific questions. Call this tool when the user has asked a company specific question and you do need more context to answer it.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: "the user's question or query"
-          }
-        }, // No parameters needed from the agent for this tool
-        required: ['query'],
-      },
-    },
-      // The async function simulates fetching the next slide's script
-      async ({query}: { [key: string]: any}) => {
-        console.log("Using get-context tool");
-        let data: { message: string; image: string };
-        try {
-          const res = await fetch(`${BACKEND_URL}get-context`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ uuid: sessionUUID, query: query}),
-          });
-          if (!res.ok) {
-            console.error("Backend error:", await res.text());
-            return;
-          }
-          data = await res.json();
-        } catch (err) {
-          console.error("Fetch failed:", err);
-          return;
-        }
-        console.log("Context Retreived");
-        console.log(data);
-          // Update image if available
-        if (data.image && data.image.length > 0) {
-          const imagePath = data.image.replace(/^public/, '')
-          console.log(imagePath)
-          setDisplayImage(imagePath);
-          setShowDefault(false);
-        }
-        return data.message;
-
-        // const prompt = `
-        // <user_query> ${query} <user_query>
-        // <context>${data.message}<context>`;
-        // return prompt;
-    });
-    client.on('realtime.event', onTranscript)
-    client.on('conversation.updated', onConvUpdate)
-    client.on('conversation.interrupted', async () => {
-      setIsCheckingEndOfStream(false);
-      const trackSampleOffset = await wavStreamPlayer.interrupt();
-      if (trackSampleOffset?.trackId) {
-        const { trackId, offset } = trackSampleOffset;
-        await client.cancelResponse(trackId, offset);
-      }
-    });
-  
-    // seed the UI
-    setItems(client.conversation.getItems())
-  
-    return () => {
-      console.log('[useEffect] 🔥 tearing down handlers')
-      client.off('realtime.event', onTranscript)
-      client.off('conversation.updated', onConvUpdate)
-    }
-  }, [sessionUUID])
 
   // Set up render loops for visualization canvas
   useEffect(() => {
@@ -1025,7 +1068,9 @@ export default function ConsolePage({ companyName }: Props) {
             }}
           >
             <img 
-              src={isInDemoMode ? slides[currentSlideIndex].imagePath : displayImage}
+              src={(!isInDemoMode || isDemoInterrupted)
+                ? displayImage
+                : slides[currentSlideIndex].imagePath}
               alt="Welcome to Revola Demo" 
               style={{ 
                 maxWidth: '100%', 
