@@ -57,3 +57,7 @@ export const slides = [
     `
   }
 ]
+
+
+export const demo_script = 
+"Call the get_demo_script tool"
